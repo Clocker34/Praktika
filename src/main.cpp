@@ -1,5 +1,12 @@
-// Praktika — задание 1: Win32 трей с одним экземпляром на пользователя.
-// Выполнены 12 пунктов требования (см. README).
+// Praktika — задание 1 + интеграция со службой (задание 2):
+//   * При старте: проверка состояния службы; если STOPPED — запустить и выйти
+//     (зад.2 GUI п.1). Если RUNNING — проверить, что мы запущены службой
+//     (зад.2 GUI п.2: parent == service, либо корректный /fromservice:<pid>).
+//   * Меню «Файл → Выход» и «Выход» в трее → RPC RequestStop (зад.2 GUI п.3, п.4).
+#include "app_config.h"
+#include "service_check.h"
+#include "service_client.h"
+
 #include <windows.h>
 #include <shellapi.h>
 #include <string>
@@ -12,13 +19,10 @@ namespace {
 
 constexpr wchar_t kWindowClass[] = L"Praktika_TrayWindow";
 constexpr wchar_t kWindowTitle[] = L"Praktika";
-// П.10: один процесс на пользователя — Local\\ ограничивает мьютекс сессией.
-constexpr wchar_t kSingletonMutex[] = L"Local\\Praktika_SingleInstance";
 
 constexpr UINT kTrayCallbackMsg = WM_APP + 1;
 constexpr UINT kTrayIconId = 1;
 
-// П.7: поддержка скрытого старта; принимаем «/background», «-background», «--silent».
 constexpr wchar_t kArgBackground1[] = L"/background";
 constexpr wchar_t kArgBackground2[] = L"-background";
 constexpr wchar_t kArgSilent1[] = L"--silent";
@@ -31,7 +35,6 @@ enum CommandIds : UINT_PTR {
 };
 
 HANDLE g_singletonMutex = nullptr;
-// П.6: системное сообщение TaskbarCreated, динамический id.
 UINT g_msgTaskbarCreated = 0;
 
 bool ParseStartHidden() {
@@ -54,9 +57,8 @@ bool ParseStartHidden() {
   return hidden;
 }
 
-// П.10: true — этот процесс должен немедленно завершиться, не показывая трей.
 bool AcquireSingletonOrExit() {
-  g_singletonMutex = CreateMutexW(nullptr, FALSE, kSingletonMutex);
+  g_singletonMutex = CreateMutexW(nullptr, FALSE, PRAKTIKA_SINGLETON_MUTEX);
   if (!g_singletonMutex) {
     return true;
   }
@@ -90,7 +92,6 @@ void RemoveTrayIcon(HWND owner) {
   Shell_NotifyIconW(NIM_DELETE, &nid);
 }
 
-// П.2 / П.4: показать и активировать главное окно.
 void ShowAndActivateMainWindow(HWND hwnd) {
   if (!IsWindowVisible(hwnd)) {
     ShowWindow(hwnd, SW_SHOW);
@@ -99,7 +100,6 @@ void ShowAndActivateMainWindow(HWND hwnd) {
   SetForegroundWindow(hwnd);
 }
 
-// П.3 / П.4 / П.5: правый клик — контекстное меню «Открыть» / «Выход».
 void ShowTrayContextMenu(HWND hwnd) {
   HMENU menu = CreatePopupMenu();
   if (!menu) {
@@ -108,10 +108,8 @@ void ShowTrayContextMenu(HWND hwnd) {
   AppendMenuW(menu, MF_STRING, IDM_TRAY_OPEN, L"Открыть");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu, MF_STRING, IDM_TRAY_EXIT, L"Выход");
-
   POINT pt{};
   GetCursorPos(&pt);
-  // Нужно «фокусом», иначе меню не закроется по клику вне окна.
   SetForegroundWindow(hwnd);
   TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN, pt.x,
                  pt.y, 0, hwnd, nullptr);
@@ -120,7 +118,6 @@ void ShowTrayContextMenu(HWND hwnd) {
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-  // П.6: после рестарта Explorer окно получит TaskbarCreated — повторно добавить иконку.
   if (msg == g_msgTaskbarCreated) {
     AddTrayIcon(hwnd);
     return 0;
@@ -140,7 +137,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       MessageBoxW(hwnd, L"Не удалось добавить иконку в трей.",
                   L"Praktika — ошибка", MB_OK | MB_ICONERROR);
     }
-    // П.9: главное меню окна с пунктом «Файл → Выход».
     HMENU bar = CreateMenu();
     HMENU file = CreateMenu();
     AppendMenuW(file, MF_STRING, IDM_FILE_EXIT, L"Выход");
@@ -153,13 +149,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (id == IDM_TRAY_OPEN) {
       ShowAndActivateMainWindow(hwnd);
     } else if (id == IDM_TRAY_EXIT || id == IDM_FILE_EXIT) {
-      // П.5 / П.9: оба «Выход» завершают приложение.
-      DestroyWindow(hwnd);
+      // Зад.2 GUI п.3, п.4: «Выход» → RPC останавливает службу,
+      // служба, в свою очередь, завершит этот процесс GUI.
+      Praktika_CallRequestStop();
     }
     return 0;
   }
   case WM_CLOSE:
-    // П.8: крестик скрывает окно, процесс продолжает работу из трея.
     ShowWindow(hwnd, SW_HIDE);
     return 0;
   case WM_DESTROY:
@@ -175,7 +171,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
                       _In_ LPWSTR, _In_ int) {
-  // П.10: проверка до создания окна и иконки трея.
+  // Зад.2 GUI п.1: служба остановлена → запустить, дождаться, выйти.
+  if (Praktika_BootstrapServiceAndExit()) {
+    return 0;
+  }
+
+  // Зад.2 GUI п.2: процесс должен быть запущен службой; иначе — выход.
+  // На Win10+ CreateProcessAsUser не всегда выставляет parent равным процессу
+  // службы, поэтому проверяем И parent==svcPid, И /fromservice:<svcPid>.
+  const DWORD svcPid = Praktika_GetServiceProcessId();
+  const DWORD parent = Praktika_GetParentProcessId();
+  const DWORD fromArg = Praktika_ParseFromServiceArg();
+  const bool okParent = (svcPid != 0 && parent == svcPid);
+  const bool okFromArg = (svcPid != 0 && fromArg == svcPid && fromArg != 0);
+  if (!okParent && !okFromArg) {
+    return 0;
+  }
+
+  // П.10 задания 1: один экземпляр на пользователя.
   if (AcquireSingletonOrExit()) {
     return 0;
   }
@@ -210,7 +223,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
     return 1;
   }
 
-  // П.7: запуск с /background — окно скрыто, иконка в трее уже есть.
+  // Зад.2 п.1 службы: GUI стартует со скрытым окном
+  // (служба передаёт /background --silent).
   if (ParseStartHidden()) {
     ShowWindow(main, SW_HIDE);
   } else {

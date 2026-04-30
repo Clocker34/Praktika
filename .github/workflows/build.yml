@@ -19,9 +19,9 @@ jobs:
       - name: Build (Release)
         run: cmake --build build --config Release -j
 
-      - name: Upload exe
+      - name: Upload artifacts (Praktika.exe + PraktikaService.exe)
         uses: actions/upload-artifact@v4
         with:
           name: Praktika-Release-x64
-          path: build/bin/Release/Praktika.exe
+          path: build/bin/Release/*.exe
           if-no-files-found: error

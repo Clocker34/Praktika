@@ -1,46 +1,96 @@
-# Praktika — задание 1 (Win32 трей)
+# Praktika
 
-Графическое приложение на **Win32 API** + **CMake** + **MSVC**. Иконка в трее, контекстное меню, скрытый запуск, единственный экземпляр на пользователя. Сборка через VS Code (CMake Tools) или из консоли.
+Учебный проект на **Windows**, **C/C++**: трей-приложение (задание 1) + Windows-служба и **Windows RPC (ALPC)** (задание 2). Сборка — **CMake + MSVC (x64)**, разработка в **VS Code** (CMake Tools).
 
-## Соответствие требованиям ТЗ
+---
 
-| № | Требование | Где реализовано |
-|---|------------|------------------|
-| 1 | Иконка в трее при запуске | `WM_CREATE` → `AddTrayIcon` (`Shell_NotifyIcon NIM_ADD`) |
-| 2 | ЛКМ — главное окно | `kTrayCallbackMsg` + `WM_LBUTTONUP` → `ShowAndActivateMainWindow` |
-| 3 | ПКМ — контекстное меню | `WM_RBUTTONUP` → `ShowTrayContextMenu` |
-| 4 | «Открыть» в меню | `IDM_TRAY_OPEN` → `ShowAndActivateMainWindow` |
-| 5 | «Выход» в меню | `IDM_TRAY_EXIT` → `DestroyWindow` → `WM_DESTROY` |
-| 6 | Пересоздание панели задач | `RegisterWindowMessage("TaskbarCreated")` + повторный `NIM_ADD` |
-| 7 | Скрытый запуск | `/background` / `--silent` → `SW_HIDE` главного окна |
-| 8 | Закрытие окна — в фон | `WM_CLOSE` → `ShowWindow(SW_HIDE)`, не выход |
-| 9 | Меню «Файл → Выход» | `CreateMenu` + `IDM_FILE_EXIT` |
-| 10 | Один экземпляр на пользователя | `CreateMutexW("Local\\Praktika_SingleInstance")` |
-| 11 | Сборка на конвейере | `CMakeLists.txt`, `CMakePresets.json`, `.github/workflows/build.yml` |
-| 12 | Артефакт-exe | `build/bin/Release/Praktika.exe`, `MultiThreaded` (CRT в exe), артефакт CI |
+## Сборка
 
-## Сборка в VS Code
+В VS Code:
 
-1. Установить **Visual Studio 2022 Build Tools** (или VS 2022) с рабочей нагрузкой **C++ desktop** и **Windows SDK**.
-2. Открыть папку проекта в VS Code, согласиться на рекомендуемые расширения **CMake Tools**, **C/C++**.
-3. **Ctrl+Shift+P** → `CMake: Select a Kit` → **Visual Studio 2022 Release - amd64**.
-4. **CMake: Configure**, затем **CMake: Build** (или задача `CMake: build Release`).
+1. **CMake Tools**, **C/C++** — расширения.
+2. **Ctrl+Shift+P → CMake: Select Configure Preset → Visual Studio 2022 x64**.
+3. **CMake: Configure**, затем **CMake: Build** (или **F7**).
 
-Артефакт: `build/bin/Release/Praktika.exe`.
+В консоли:
 
-## Сборка из консоли
-
-```powershell
+```text
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 
-## Запуск
+После сборки в `build\bin\Release\` лежат **`Praktika.exe`** и **`PraktikaService.exe`** (оба — в одной папке: служба ищет GUI рядом).
 
-- Обычно: `build\bin\Release\Praktika.exe` — окно + иконка.
-- Скрытый: `Praktika.exe /background` — окно скрыто, только трей.
-- ЛКМ — окно. ПКМ — меню «Открыть» / «Выход». Крестик — в трей.
+MIDL-стабы (`rpc/Praktika_Stop_*.{h,c}`) **закоммичены**; перегенерировать после правок IDL — **`scripts\gen_midl.bat`** (нужны Visual Studio Build Tools 2022).
+
+---
+
+## Установка службы (от администратора)
+
+```text
+cd build\bin\Release
+PraktikaService.exe install
+sc.exe start PraktikaSvc
+```
+
+После старта служба сама запускает `Praktika.exe` во **всех активных** пользовательских терминальных сессиях (≠ 0), от **имени владельца** сессии, **главное окно скрыто**. Иконка появится в трее.
+
+Удаление:
+
+```text
+sc.exe stop PraktikaSvc        # не сработает по дизайну: STOP отключён
+PraktikaService.exe uninstall  # сначала остановите процесс через GUI «Выход»
+```
+
+> Служба **не принимает** `STOP` и `SHUTDOWN` (требование п.3). Остановка — только через **Выход** в GUI (RPC-метод `Praktika_Stop::RequestStop`).
+
+---
+
+## Архитектура
+
+### Межпроцессное взаимодействие
+
+- Транспорт **ALPC** через **Windows RPC**, протокол **`ncalrpc`**, эндпоинт **`PraktikaSvcStop`**.
+- IDL: `rpc/Praktika_Stop.idl` — один метод `RequestStop()`.
+- Клиент GUI: `src/service_client.cpp` (`Praktika_CallRequestStop`).
+- Сервер службы: `src/service/PraktikaService.cpp` (поток `RpcThread`, `RpcServerListen`).
+
+### Служба `PraktikaService.exe`
+
+| Требование (задание 2) | Реализация |
+|------------------------|------------|
+| 1. Запуск GUI во всех сессиях ≠ 0, от владельца, окно скрыто | `WTSEnumerateSessionsW` (только `WTSActive`) → `WTSQueryUserToken` + `DuplicateTokenEx` → `CreateProcessAsUserW`, аргументы `/background --silent /fromservice:<pid>` |
+| 2. Слежение за новыми пользователями | `SERVICE_ACCEPT_SESSIONCHANGE` + `WTS_SESSION_LOGON` → `LaunchInSession` |
+| 3. STOP/SHUTDOWN отключены | В `HandlerEx`: возвращаем `ERROR_CALL_NOT_IMPLEMENTED`; `dwControlsAccepted` = только `SERVICE_ACCEPT_SESSIONCHANGE` |
+| 4. RPC-сервер ALPC, работа до остановки RPC | Отдельный поток с `RpcServerListen`; `ServiceMain` ждёт его `WaitForSingleObject` |
+| 5. Зарегистрированный интерфейс остановки | `Praktika_Stop_v1_0_s_ifspec` через `RpcServerRegisterIf2` |
+| 6. При остановке завершить все GUI | `KillAllChildren` хранит `HANDLE` дочерних процессов и вызывает `TerminateProcess` |
+
+`install`/`uninstall` (как у [lqt5h/ziovpontvrs](https://github.com/lqt5h/ziovpontvrs)): `CreateServiceW` (тип `SERVICE_AUTO_START`) и `DeleteService`.
+
+### Графическое приложение `Praktika.exe`
+
+| Требование (задание 2) | Реализация |
+|------------------------|------------|
+| 1. Если служба остановлена — запустить, дождаться Running, выйти | `Praktika_BootstrapServiceAndExit` (`StartServiceW` + цикл `QueryServiceStatus`) |
+| 2. Родителем должна быть служба, иначе выход | `OpenSCManager` + `QueryServiceStatusEx` → PID службы; сравнение с **`GetParentProcessId`** **или** с `/fromservice:<pid>` (Win10+ часто не выставляет parent) |
+| 3. «Файл → Выход» останавливает службу | `IDM_FILE_EXIT` → `Praktika_CallRequestStop` |
+| 4. «Выход» в трее останавливает службу | `IDM_TRAY_EXIT` → `Praktika_CallRequestStop` |
+
+Кроме того, GUI решает **задание 1** (12 пунктов: трей, ЛКМ/ПКМ, «Открыть»/«Выход», `TaskbarCreated`, скрытый старт `/background`, фон при закрытии, `Файл → Выход`, single-instance мьютекс).
+
+---
+
+## Запуск (вручную после `install`)
+
+```text
+sc.exe start PraktikaSvc        # служба сама стартует Praktika.exe в трее
+```
+
+GUI **руками не запускайте** — он сам поднимется службой и пройдёт проверку родителя. Если запустить GUI вручную при остановленной службе — он стартует службу и завершится.
+
+---
 
 ## CI
 
-Workflow `.github/workflows/build.yml` собирает Release на `windows-latest` и публикует артефакт **`Praktika-Release-x64`** (`Praktika.exe`).
+`.github/workflows/build.yml` — сборка обоих exe на `windows-latest`, артефакт **`Praktika-Release-x64`** содержит `Praktika.exe` и `PraktikaService.exe`.
