@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Praktika (Debug)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/Debug/Praktika.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/build/bin/Debug",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Praktika (Release)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/Release/Praktika.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/build/bin/Release",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Praktika (/background)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/Release/Praktika.exe",
+      "args": ["/background"],
+      "cwd": "${workspaceFolder}/build/bin/Release",
+      "stopAtEntry": false
+    }
+  ]
+}
