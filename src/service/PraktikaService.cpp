@@ -11,6 +11,9 @@
 //   * KillAllChildren  — TerminateProcess по PID запущенных GUI (п.6 ТЗ).
 //   * install/uninstall— регистрация в SCM одной командой
 //                         (PraktikaService.exe install).
+//   * Доп. баллы: WTSSendMessage — подтверждение остановки; DACL службы
+//                 (DENY TERMINATE Everyone + SYSTEM/Admins); DACL GUI —
+//                 GRANT только владельцу сессии + SYSTEM/Admins.
 #include "../app_config.h"
 
 extern "C" {
@@ -26,6 +29,9 @@ extern "C" {
 
 #include <rpc.h>
 #include <stdio.h>
+
+#include <aclapi.h>
+#include <accctrl.h>
 
 #include <string>
 #include <vector>
@@ -75,6 +81,231 @@ void KillAllChildren() {
     TerminateProcess(h, 0);
     CloseHandle(h);
   }
+}
+
+// Доп. баллы (процесс службы LOCALSYSTEM): DENY TERMINATE для Everyone,
+// полный доступ — SYSTEM и Administrators; дескриптор службы после
+// CreateProcess не затрагивается.
+bool HardenServiceProcessKill(HANDLE hProcess) {
+  if (!hProcess || hProcess == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  PSID pEveryone = nullptr;
+  PSID pSystem = nullptr;
+  PSID pAdmins = nullptr;
+  SID_IDENTIFIER_AUTHORITY nt = SECURITY_NT_AUTHORITY;
+
+  if (!AllocateAndInitializeSid(&nt, 1, SECURITY_WORLD_RID, 0, 0, 0, 0, 0, 0, 0,
+                                &pEveryone)) {
+    return false;
+  }
+  if (!AllocateAndInitializeSid(&nt, 1, SECURITY_LOCAL_SYSTEM_RID, 0, 0, 0, 0, 0,
+                                0, 0, &pSystem)) {
+    FreeSid(pEveryone);
+    return false;
+  }
+  if (!AllocateAndInitializeSid(
+          &nt, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0,
+          0, 0, 0, &pAdmins)) {
+    FreeSid(pEveryone);
+    FreeSid(pSystem);
+    return false;
+  }
+
+  EXPLICIT_ACCESSW ea[4]{};
+  int i = 0;
+
+  ea[i].grfAccessPermissions = PROCESS_TERMINATE;
+  ea[i].grfAccessMode = DENY_ACCESS;
+  ea[i].grfInheritance = NO_INHERITANCE;
+  ea[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[i].Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+  ea[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pEveryone);
+  ++i;
+
+  ea[i].grfAccessPermissions =
+      PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_VM_READ;
+  ea[i].grfAccessMode = GRANT_ACCESS;
+  ea[i].grfInheritance = NO_INHERITANCE;
+  ea[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[i].Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+  ea[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pEveryone);
+  ++i;
+
+  ea[i].grfAccessPermissions = PROCESS_ALL_ACCESS;
+  ea[i].grfAccessMode = GRANT_ACCESS;
+  ea[i].grfInheritance = NO_INHERITANCE;
+  ea[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[i].Trustee.TrusteeType = TRUSTEE_IS_USER;
+  ea[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pSystem);
+  ++i;
+
+  ea[i].grfAccessPermissions = PROCESS_ALL_ACCESS;
+  ea[i].grfAccessMode = GRANT_ACCESS;
+  ea[i].grfInheritance = NO_INHERITANCE;
+  ea[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[i].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+  ea[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pAdmins);
+  ++i;
+
+  PACL pAcl = nullptr;
+  const DWORD aceErr = SetEntriesInAclW(i, ea, nullptr, &pAcl);
+  if (aceErr != ERROR_SUCCESS || !pAcl) {
+    if (pAcl) {
+      LocalFree(pAcl);
+    }
+    FreeSid(pEveryone);
+    FreeSid(pSystem);
+    FreeSid(pAdmins);
+    return false;
+  }
+  FreeSid(pEveryone);
+  FreeSid(pSystem);
+  FreeSid(pAdmins);
+
+  const DWORD st = SetSecurityInfo(hProcess, SE_KERNEL_OBJECT,
+                                   DACL_SECURITY_INFORMATION, nullptr, nullptr,
+                                   pAcl, nullptr);
+  LocalFree(pAcl);
+  if (st != ERROR_SUCCESS) {
+    Log(L"SetSecurityInfo(Harden)", 0, st);
+  }
+  return st == ERROR_SUCCESS;
+}
+
+// Доп. баллы (GUI от имени пользователя): только этот пользователь, SYSTEM и
+// Administrators имеют нужные права; остальные не получают TERMINATE
+// через OpenProcess (без DENY для Everyone — иначе владелец тоже «попадает»
+// под отказ из-за членства во Everyone).
+bool HardenGuiProcessKill(HANDLE hProcess, HANDLE hUserPriToken) {
+  if (!hProcess || !hUserPriToken) {
+    return false;
+  }
+
+  DWORD need = 0;
+  GetTokenInformation(hUserPriToken, TokenUser, nullptr, 0, &need);
+  if (!need || need > 65536u) {
+    return false;
+  }
+  std::vector<BYTE> tokBuf(static_cast<size_t>(need));
+  if (!GetTokenInformation(
+          hUserPriToken, TokenUser, reinterpret_cast<PTOKEN_USER>(tokBuf.data()),
+          need, &need)) {
+    return false;
+  }
+  PSID const pUser = reinterpret_cast<PTOKEN_USER>(tokBuf.data())->User.Sid;
+
+  PSID pSystem = nullptr;
+  PSID pAdmins = nullptr;
+  SID_IDENTIFIER_AUTHORITY nt = SECURITY_NT_AUTHORITY;
+  if (!AllocateAndInitializeSid(&nt, 1, SECURITY_LOCAL_SYSTEM_RID, 0, 0, 0, 0,
+                                0, 0, 0, &pSystem)) {
+    return false;
+  }
+  if (!AllocateAndInitializeSid(
+          &nt, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0,
+          0, 0, 0, &pAdmins)) {
+    FreeSid(pSystem);
+    return false;
+  }
+
+  EXPLICIT_ACCESSW ea[3]{};
+  int i = 0;
+
+  ea[i].grfAccessPermissions = PROCESS_TERMINATE | SYNCHRONIZE |
+                             PROCESS_QUERY_LIMITED_INFORMATION |
+                             PROCESS_VM_READ | READ_CONTROL;
+  ea[i].grfAccessMode = GRANT_ACCESS;
+  ea[i].grfInheritance = NO_INHERITANCE;
+  ea[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[i].Trustee.TrusteeType = TRUSTEE_IS_USER;
+  ea[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pUser);
+  ++i;
+
+  ea[i].grfAccessPermissions = PROCESS_ALL_ACCESS;
+  ea[i].grfAccessMode = GRANT_ACCESS;
+  ea[i].grfInheritance = NO_INHERITANCE;
+  ea[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[i].Trustee.TrusteeType = TRUSTEE_IS_USER;
+  ea[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pSystem);
+  ++i;
+
+  ea[i].grfAccessPermissions = PROCESS_ALL_ACCESS;
+  ea[i].grfAccessMode = GRANT_ACCESS;
+  ea[i].grfInheritance = NO_INHERITANCE;
+  ea[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[i].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+  ea[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pAdmins);
+  ++i;
+
+  PACL pAcl = nullptr;
+  const DWORD aceErr = SetEntriesInAclW(i, ea, nullptr, &pAcl);
+  FreeSid(pSystem);
+  FreeSid(pAdmins);
+  if (aceErr != ERROR_SUCCESS || !pAcl) {
+    if (pAcl) {
+      LocalFree(pAcl);
+    }
+    return false;
+  }
+
+  const DWORD st = SetSecurityInfo(hProcess, SE_KERNEL_OBJECT,
+                                   DACL_SECURITY_INFORMATION, nullptr, nullptr,
+                                   pAcl, nullptr);
+  LocalFree(pAcl);
+  if (st != ERROR_SUCCESS) {
+    Log(L"SetSecurityInfo(GUI Harden)", 0, st);
+  }
+  return st == ERROR_SUCCESS;
+}
+
+DWORD FindFirstActiveUserSession() {
+  PWTS_SESSION_INFOW arr = nullptr;
+  DWORD n = 0;
+  if (!WTSEnumerateSessionsW(WTS_CURRENT_SERVER_HANDLE, 0, 1, &arr, &n)) {
+    return MAXDWORD;
+  }
+  DWORD sid = MAXDWORD;
+  for (DWORD j = 0; j < n; ++j) {
+    if (arr[j].SessionId == 0) {
+      continue;
+    }
+    if (arr[j].State != WTSActive) {
+      continue;
+    }
+    sid = arr[j].SessionId;
+    break;
+  }
+  WTSFreeMemory(arr);
+  return sid;
+}
+
+// Доп. баллы: диалог подтверждения в интерактивной сессии пользователя
+// (аналогично Winlogon secure desktop — отдельный рабочий стол Winlogon здесь
+// не поднимается; используется штатный WTSSendMessage в активной сессии).
+bool AskUserConfirmStop() {
+  const DWORD sid = FindFirstActiveUserSession();
+  if (sid == MAXDWORD) {
+    Log(L"no active session for stop confirm", 0, 0);
+    return false;
+  }
+  static const wchar_t kTitle[] = L"Praktika";
+  static const wchar_t kMsg[] =
+      L"Остановить службу Praktika и закрыть значок в трее?";
+  DWORD resp = static_cast<DWORD>(-1);
+  const BOOL ok = WTSSendMessageW(
+      WTS_CURRENT_SERVER_HANDLE, sid, const_cast<LPWSTR>(kTitle),
+      static_cast<DWORD>(sizeof(kTitle) - sizeof(wchar_t)),
+      const_cast<LPWSTR>(kMsg),
+      static_cast<DWORD>(sizeof(kMsg) - sizeof(wchar_t)),
+      MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND |
+          MB_TOPMOST,
+      0, &resp, TRUE);
+  if (!ok) {
+    Log(L"WTSSendMessageW", sid, GetLastError());
+    return false;
+  }
+  return resp == IDYES;
 }
 
 void SetState(DWORD state, DWORD acc) {
@@ -153,15 +384,17 @@ bool LaunchInSession(DWORD sid) {
   if (env) {
     DestroyEnvironmentBlock(env);
   }
-  CloseHandle(hPri);
 
   if (!ok) {
     Log(L"CreateProcessAsUserW", sid, GetLastError());
+    CloseHandle(hPri);
     return false;
   }
   if (pi.hThread) {
     CloseHandle(pi.hThread);
   }
+  (void)HardenGuiProcessKill(pi.hProcess, hPri);
+  CloseHandle(hPri);
   TrackChild(pi.hProcess);  // оставляем HANDLE для KillAllChildren()
   return true;
 }
@@ -260,6 +493,8 @@ void WINAPI ServiceMain(DWORD, LPWSTR*) {
   // dwControlsAccepted: только SESSIONCHANGE — не принимаем STOP/SHUTDOWN.
   SetState(SERVICE_RUNNING, SERVICE_ACCEPT_SESSIONCHANGE);
 
+  (void)HardenServiceProcessKill(GetCurrentProcess());
+
   LaunchInAllSessions();
 
   // Ждём, пока RPC-поток не закончит RpcServerListen (по RequestStop).
@@ -279,7 +514,10 @@ extern "C" void RequestStop(handle_t) {
   if (InterlockedCompareExchange(&g_stopping, 1, 0) != 0) {
     return;
   }
-  // Останавливаем приём новых RPC; сами завершаем текущий вызов и выходим.
+  if (!AskUserConfirmStop()) {
+    InterlockedExchange(&g_stopping, 0);
+    return;
+  }
   RpcMgmtStopServerListening(nullptr);
 }
 
