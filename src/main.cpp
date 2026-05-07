@@ -6,10 +6,12 @@
 #include "app_config.h"
 #include "service_check.h"
 #include "service_client.h"
+#include "api_client.h"
 
 #include <windows.h>
 #include <shellapi.h>
 #include <string>
+#include <vector>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
@@ -32,7 +34,48 @@ enum CommandIds : UINT_PTR {
   IDM_FILE_EXIT = 100,
   IDM_TRAY_OPEN = 101,
   IDM_TRAY_EXIT = 102,
+
+  ID_USER_EDIT = 200,
+  ID_PASS_EDIT,
+  ID_LOGIN_BTN,
+  
+  ID_CODE_EDIT,
+  ID_ACTIVATE_BTN,
+  
+  ID_LOGOUT_BTN,
+  
+  ID_TIMER_POLL = 1
 };
+
+enum class GuiState {
+  Auth,
+  Activation,
+  Main
+};
+
+GuiState g_state = GuiState::Auth;
+
+// UI Controls
+HWND g_hAuthPanel = nullptr;
+HWND g_hUserEdit = nullptr;
+HWND g_hPassEdit = nullptr;
+HWND g_hLoginBtn = nullptr;
+HWND g_hAuthErr = nullptr;
+
+HWND g_hActPanel = nullptr;
+HWND g_hCodeEdit = nullptr;
+HWND g_hActBtn = nullptr;
+HWND g_hActErr = nullptr;
+
+HWND g_hMainPanel = nullptr;
+HWND g_hStatusLbl = nullptr;
+HWND g_hUserLbl = nullptr;
+HWND g_hLicLbl = nullptr;
+HWND g_hLogoutBtn = nullptr;
+
+std::wstring g_currentUser;
+std::wstring g_currentExpiry;
+bool g_isLicensed = false;
 
 HANDLE g_singletonMutex = nullptr;
 UINT g_msgTaskbarCreated = 0;
@@ -117,6 +160,93 @@ void ShowTrayContextMenu(HWND hwnd) {
   DestroyMenu(menu);
 }
 
+void UpdateUI(HWND hwnd) {
+  ShowWindow(g_hAuthPanel, g_state == GuiState::Auth ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hActPanel, g_state == GuiState::Activation ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hMainPanel, g_state == GuiState::Main ? SW_SHOW : SW_HIDE);
+
+  if (g_state == GuiState::Main) {
+    SetWindowTextW(g_hUserLbl, (L"Пользователь: " + g_currentUser).c_str());
+    if (g_isLicensed) {
+      SetWindowTextW(g_hStatusLbl, L"Антивирус: АКТИВЕН (разблокирован)");
+      SetWindowTextW(g_hLicLbl, (L"Лицензия до: " + g_currentExpiry).c_str());
+    } else {
+      SetWindowTextW(g_hStatusLbl, L"Антивирус: ЗАБЛОКИРОВАН (нет лицензии)");
+      SetWindowTextW(g_hLicLbl, L"Лицензия отсутствует");
+    }
+  }
+}
+
+void CheckState(HWND hwnd) {
+  std::wstring username;
+  long st = Praktika_RpcGetAuthInfo(username);
+  if (st != CYCL_OK || username.empty()) {
+    g_state = GuiState::Auth;
+    g_currentUser.clear();
+    g_isLicensed = false;
+    SetWindowTextW(g_hAuthErr, L"");
+    UpdateUI(hwnd);
+    return;
+  }
+  
+  g_currentUser = username;
+  
+  bool isLic = false;
+  std::wstring expiry;
+  st = Praktika_RpcGetLicenseInfo(isLic, expiry);
+  
+  if (st == CYCL_NO_LICENSE || !isLic) {
+    g_isLicensed = false;
+    g_state = GuiState::Activation;
+    SetWindowTextW(g_hActErr, L"");
+  } else {
+    g_isLicensed = true;
+    g_currentExpiry = expiry;
+    g_state = GuiState::Main;
+  }
+  
+  UpdateUI(hwnd);
+}
+
+void OnLoginClick(HWND hwnd) {
+  wchar_t u[256]{};
+  wchar_t p[256]{};
+  GetWindowTextW(g_hUserEdit, u, 256);
+  GetWindowTextW(g_hPassEdit, p, 256);
+  
+  SetWindowTextW(g_hAuthErr, L"Подождите...");
+  UpdateWindow(g_hAuthErr);
+  
+  long st = Praktika_RpcLogin(u, p);
+  SecureZeroMemory(p, sizeof(p));
+  
+  if (st != CYCL_OK) {
+    SetWindowTextW(g_hAuthErr, L"Ошибка аутентификации.");
+  } else {
+    CheckState(hwnd);
+  }
+}
+
+void OnActivateClick(HWND hwnd) {
+  wchar_t c[256]{};
+  GetWindowTextW(g_hCodeEdit, c, 256);
+  
+  SetWindowTextW(g_hActErr, L"Подождите...");
+  UpdateWindow(g_hActErr);
+  
+  long st = Praktika_RpcActivateProduct(c);
+  if (st != CYCL_OK) {
+    SetWindowTextW(g_hActErr, L"Ошибка активации. Проверьте код.");
+  } else {
+    CheckState(hwnd);
+  }
+}
+
+void OnLogoutClick(HWND hwnd) {
+  Praktika_RpcLogout();
+  CheckState(hwnd);
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   if (msg == g_msgTaskbarCreated) {
     AddTrayIcon(hwnd);
@@ -142,16 +272,61 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     AppendMenuW(file, MF_STRING, IDM_FILE_EXIT, L"Выход");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"Файл");
     SetMenu(hwnd, bar);
+    
+    // Create UI Panels
+    HFONT hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    
+    // --- Auth Panel ---
+    g_hAuthPanel = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD | WS_VISIBLE, 0, 0, 600, 400, hwnd, nullptr, nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"Вход в систему", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, g_hAuthPanel, nullptr, nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"Логин:", WS_CHILD | WS_VISIBLE, 20, 60, 100, 20, g_hAuthPanel, nullptr, nullptr, nullptr);
+    g_hUserEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 130, 60, 200, 24, g_hAuthPanel, (HMENU)ID_USER_EDIT, nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"Пароль:", WS_CHILD | WS_VISIBLE, 20, 100, 100, 20, g_hAuthPanel, nullptr, nullptr, nullptr);
+    g_hPassEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD, 130, 100, 200, 24, g_hAuthPanel, (HMENU)ID_PASS_EDIT, nullptr, nullptr);
+    g_hLoginBtn = CreateWindowExW(0, L"BUTTON", L"Вход", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 130, 140, 100, 30, g_hAuthPanel, (HMENU)ID_LOGIN_BTN, nullptr, nullptr);
+    g_hAuthErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 180, 400, 20, g_hAuthPanel, nullptr, nullptr, nullptr);
+    
+    // --- Activation Panel ---
+    g_hActPanel = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD, 0, 0, 600, 400, hwnd, nullptr, nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"Активация продукта", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, g_hActPanel, nullptr, nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"Код:", WS_CHILD | WS_VISIBLE, 20, 60, 100, 20, g_hActPanel, nullptr, nullptr, nullptr);
+    g_hCodeEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 130, 60, 200, 24, g_hActPanel, (HMENU)ID_CODE_EDIT, nullptr, nullptr);
+    g_hActBtn = CreateWindowExW(0, L"BUTTON", L"Активировать", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 130, 100, 150, 30, g_hActPanel, (HMENU)ID_ACTIVATE_BTN, nullptr, nullptr);
+    g_hActErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 140, 400, 20, g_hActPanel, nullptr, nullptr, nullptr);
+    
+    // --- Main Panel ---
+    g_hMainPanel = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD, 0, 0, 600, 400, hwnd, nullptr, nullptr, nullptr);
+    g_hStatusLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 20, 400, 20, g_hMainPanel, nullptr, nullptr, nullptr);
+    g_hUserLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 60, 400, 20, g_hMainPanel, nullptr, nullptr, nullptr);
+    g_hLicLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 100, 400, 20, g_hMainPanel, nullptr, nullptr, nullptr);
+    g_hLogoutBtn = CreateWindowExW(0, L"BUTTON", L"Выйти", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 20, 140, 100, 30, g_hMainPanel, (HMENU)ID_LOGOUT_BTN, nullptr, nullptr);
+    
+    EnumChildWindows(hwnd, [](HWND child, LPARAM param) -> BOOL {
+      SendMessageW(child, WM_SETFONT, (WPARAM)param, MAKELPARAM(TRUE, 0));
+      return TRUE;
+    }, (LPARAM)hFont);
+    
+    SetTimer(hwnd, ID_TIMER_POLL, 5000, nullptr);
+    CheckState(hwnd);
     return 0;
   }
+  case WM_TIMER:
+    if (wParam == ID_TIMER_POLL) {
+      CheckState(hwnd);
+    }
+    return 0;
   case WM_COMMAND: {
     const UINT id = LOWORD(wParam);
     if (id == IDM_TRAY_OPEN) {
       ShowAndActivateMainWindow(hwnd);
     } else if (id == IDM_TRAY_EXIT || id == IDM_FILE_EXIT) {
-      // Зад.2 GUI п.3, п.4: «Выход» → RPC останавливает службу,
-      // служба, в свою очередь, завершит этот процесс GUI.
       Praktika_CallRequestStop();
+    } else if (id == ID_LOGIN_BTN) {
+      OnLoginClick(hwnd);
+    } else if (id == ID_ACTIVATE_BTN) {
+      OnActivateClick(hwnd);
+    } else if (id == ID_LOGOUT_BTN) {
+      OnLogoutClick(hwnd);
     }
     return 0;
   }

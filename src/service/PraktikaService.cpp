@@ -1,23 +1,22 @@
-// Praktika — задание 2: Windows-служба + Win32 RPC (ALPC) + WTS-логика.
+// Praktika — задание 2 + задание 3:
+//   Windows-служба + Win32 RPC (ALPC) + WTS-логика
+//   + аутентификация/лицензирование через HTTPS + RPC-интерфейс Praktika_Api.
 //
 // Архитектура:
-//   * ServiceMain      — статусы SCM, без приёма STOP/SHUTDOWN (п.3 ТЗ).
-//   * RpcThread        — ncalrpc-сервер (ALPC), эндпоинт PraktikaSvcStop;
-//                         выходит по RpcMgmtStopServerListening (п.4 ТЗ).
-//   * RequestStop      — RPC-метод (Praktika_Stop.idl, п.5 ТЗ).
-//   * Sessions         — WTSEnumerateSessions/SESSION_LOGON: запуск GUI в
-//                         сессиях (≠0), от имени владельца, окно скрыто
-//                         (п.1, п.2 ТЗ).
-//   * KillAllChildren  — TerminateProcess по PID запущенных GUI (п.6 ТЗ).
-//   * install/uninstall— регистрация в SCM одной командой
-//                         (PraktikaService.exe install).
-//   * Доп. баллы: WTSSendMessage — подтверждение остановки; DACL службы
-//                 (DENY TERMINATE Everyone + SYSTEM/Admins); DACL GUI —
-//                 GRANT только владельцу сессии + SYSTEM/Admins.
+//   * ServiceMain      — статусы SCM, без приёма STOP/SHUTDOWN (зад.2 п.3).
+//   * RpcThread        — ncalrpc-сервер (ALPC):
+//                         - PraktikaSvcStop (Praktika_Stop, зад.2 п.4-5)
+//                         - PraktikaSvcApi  (Praktika_Api,  зад.3 п.10)
+//   * Auth/License     — менеджеры аутентификации и лицензирования (зад.3).
+//   * Sessions         — WTS: запуск GUI (зад.2 п.1, п.2).
+//   * Доп. баллы: WTSSendMessage, DACL.
 #include "../app_config.h"
+#include "auth_manager.h"
+#include "license_manager.h"
 
 extern "C" {
 #include "Praktika_Stop.h"
+#include "Praktika_Api.h"
 }
 
 #include <windows.h>
@@ -420,16 +419,28 @@ void LaunchInAllSessions() {
 }
 
 // П.4 ТЗ: ncalrpc/ALPC; завершается по RpcMgmtStopServerListening.
+// Зад.3 п.10: регистрируем дополнительный интерфейс Praktika_Api.
 DWORD WINAPI RpcThread(LPVOID) {
   static wchar_t kProt[] = L"ncalrpc";
-  static wchar_t kEp[] = L"PraktikaSvcStop";
+
+  // Эндпоинт 1: Praktika_Stop (зад.2).
+  static wchar_t kEpStop[] = L"PraktikaSvcStop";
   RPC_STATUS s = RpcServerUseProtseqEpW(reinterpret_cast<RPC_WSTR>(kProt), 32,
-                                        reinterpret_cast<RPC_WSTR>(kEp),
+                                        reinterpret_cast<RPC_WSTR>(kEpStop),
                                         nullptr);
   if (s != RPC_S_OK && s != RPC_S_DUPLICATE_ENDPOINT) {
     return 1;
   }
-  // П.5 ТЗ: регистрируем интерфейс остановки.
+
+  // Эндпоинт 2: Praktika_Api (зад.3 п.10).
+  static wchar_t kEpApi[] = PRAKTIKA_RPC_API_ENDPOINT;
+  s = RpcServerUseProtseqEpW(reinterpret_cast<RPC_WSTR>(kProt), 32,
+                             reinterpret_cast<RPC_WSTR>(kEpApi), nullptr);
+  if (s != RPC_S_OK && s != RPC_S_DUPLICATE_ENDPOINT) {
+    Log(L"RpcServerUseProtseqEpW(Api)", 0, static_cast<DWORD>(s));
+  }
+
+  // Регистрируем интерфейс остановки (зад.2 п.5).
   s = RpcServerRegisterIf2(Praktika_Stop_v1_0_s_ifspec, nullptr, nullptr,
                            RPC_IF_ALLOW_LOCAL_ONLY,
                            RPC_C_LISTEN_MAX_CALLS_DEFAULT, (unsigned)-1,
@@ -440,6 +451,20 @@ DWORD WINAPI RpcThread(LPVOID) {
       return 2;
     }
   }
+
+  // Регистрируем интерфейс аутентификации/лицензирования (зад.3 п.10).
+  s = RpcServerRegisterIf2(Praktika_Api_v1_0_s_ifspec, nullptr, nullptr,
+                           RPC_IF_ALLOW_LOCAL_ONLY,
+                           RPC_C_LISTEN_MAX_CALLS_DEFAULT, (unsigned)-1,
+                           nullptr);
+  if (s != RPC_S_OK) {
+    s = RpcServerRegisterIf(Praktika_Api_v1_0_s_ifspec, nullptr, nullptr);
+    if (s != RPC_S_OK) {
+      Log(L"RpcServerRegisterIf(Api)", 0, static_cast<DWORD>(s));
+      return 3;
+    }
+  }
+
   (void)RpcServerListen(1, RPC_C_LISTEN_MAX_CALLS_DEFAULT, FALSE);
   return 0;
 }
@@ -495,12 +520,20 @@ void WINAPI ServiceMain(DWORD, LPWSTR*) {
 
   (void)HardenServiceProcessKill(GetCurrentProcess());
 
+  // Зад.3: запускаем менеджеры аутентификации и лицензирования.
+  auth::Init();
+  license::Init();
+
   LaunchInAllSessions();
 
   // Ждём, пока RPC-поток не закончит RpcServerListen (по RequestStop).
   WaitForSingleObject(g_rpcThread, INFINITE);
   CloseHandle(g_rpcThread);
   g_rpcThread = nullptr;
+
+  // Зад.3: останавливаем менеджеры.
+  license::Shutdown();
+  auth::Shutdown();
 
   KillAllChildren();
   SetState(SERVICE_STOPPED, 0);
@@ -519,6 +552,65 @@ extern "C" void RequestStop(handle_t) {
     return;
   }
   RpcMgmtStopServerListening(nullptr);
+}
+
+// ----- RPC-методы (Praktika_Api.idl, задание 3 п.10) -----
+
+// П.10a: информация о текущем аутентифицированном пользователе.
+extern "C" long GetAuthInfo(handle_t, long bufLen, wchar_t* username) {
+  if (!username || bufLen <= 0) return CYCL_AUTH_FAILED;
+  username[0] = L'\0';
+  if (!auth::IsAuthenticated()) {
+    return CYCL_NOT_AUTHENTICATED;
+  }
+  const std::wstring name = auth::GetUsername();
+  wcsncpy_s(username, static_cast<size_t>(bufLen), name.c_str(), _TRUNCATE);
+  return CYCL_OK;
+}
+
+// П.10b: вход в аккаунт.
+extern "C" long Login(handle_t, const wchar_t* username,
+                      const wchar_t* password) {
+  if (!username || !password) return CYCL_AUTH_FAILED;
+  return auth::Login(username, password);
+}
+
+// П.10b: выход из аккаунта.
+// П.7: при выходе удаляется лицензионный тикет.
+extern "C" long Logout(handle_t) {
+  license::ClearTicket();  // п.7: удалить тикет при выходе
+  auth::Logout();          // п.3: удалить JWT-токены
+  return CYCL_OK;
+}
+
+// П.10c: информация об активной лицензии.
+// П.11: при отсутствии лицензии — ошибка CYCL_NO_LICENSE.
+extern "C" long GetLicenseInfo(handle_t, long* pIsLicensed,
+                               long expiryBufLen, wchar_t* expiryDate) {
+  if (!pIsLicensed) return CYCL_SERVER_ERROR;
+  *pIsLicensed = 0;
+  if (expiryDate && expiryBufLen > 0) expiryDate[0] = L'\0';
+
+  if (!auth::IsAuthenticated()) {
+    return CYCL_NOT_AUTHENTICATED;
+  }
+  if (!license::IsLicensed()) {
+    return CYCL_NO_LICENSE;  // п.11
+  }
+  *pIsLicensed = 1;
+  const std::wstring exp = license::GetExpiryDate();
+  if (expiryDate && expiryBufLen > 0) {
+    wcsncpy_s(expiryDate, static_cast<size_t>(expiryBufLen),
+              exp.c_str(), _TRUNCATE);
+  }
+  return CYCL_OK;
+}
+
+// П.10d: активация продукта.
+extern "C" long ActivateProduct(handle_t, const wchar_t* activationCode) {
+  if (!activationCode) return CYCL_ACTIVATION_FAILED;
+  if (!auth::IsAuthenticated()) return CYCL_NOT_AUTHENTICATED;
+  return license::Activate(activationCode);
 }
 
 // ----- install / uninstall -----

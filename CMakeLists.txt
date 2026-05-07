@@ -18,14 +18,17 @@ set(PRAKTIKA_INCLUDES
 
 # MIDL-стабы (закоммичены, генерируются скриптом scripts/gen_midl.bat).
 set_source_files_properties(rpc/Praktika_Stop_c.c rpc/Praktika_Stop_s.c
+                            rpc/Praktika_Api_c.c  rpc/Praktika_Api_s.c
                             rpc/midl_user.c PROPERTIES LANGUAGE C)
 
-# ---- GUI (задание 1 + клиент RPC) ----
+# ---- GUI (задание 1 + клиент RPC + задание 3: аутентификация/лицензирование) ----
 add_executable(Praktika WIN32
   src/main.cpp
   src/service_check.cpp
   src/service_client.cpp
+  src/api_client.cpp
   rpc/Praktika_Stop_c.c
+  rpc/Praktika_Api_c.c
   rpc/midl_user.c
 )
 target_include_directories(Praktika PRIVATE ${PRAKTIKA_INCLUDES})
@@ -36,10 +39,15 @@ set_property(TARGET Praktika PROPERTY
 target_link_libraries(Praktika PRIVATE
   user32 shell32 advapi32 gdi32 Shlwapi Rpcrt4)
 
-# ---- Служба (задание 2: SCM + WTS + RPC сервер) ----
+# ---- Служба (задание 2: SCM + WTS + RPC сервер + задание 3: auth/license) ----
 add_executable(PraktikaService
   src/service/PraktikaService.cpp
+  src/service/auth_manager.cpp
+  src/service/license_manager.cpp
+  src/service/http_client.cpp
+  src/service/json_parser.cpp
   rpc/Praktika_Stop_s.c
+  rpc/Praktika_Api_s.c
   rpc/midl_user.c
 )
 target_include_directories(PraktikaService PRIVATE ${PRAKTIKA_INCLUDES})
@@ -48,7 +56,7 @@ target_compile_definitions(PraktikaService PRIVATE UNICODE _UNICODE)
 set_property(TARGET PraktikaService PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_link_libraries(PraktikaService PRIVATE
-  advapi32 user32 Wtsapi32 Userenv Shlwapi shell32 Rpcrt4)
+  advapi32 user32 Wtsapi32 Userenv Shlwapi shell32 Rpcrt4 Winhttp)
 
 # Размещаем оба exe в одной папке (служба ищет Praktika.exe рядом).
 if(CMAKE_CONFIGURATION_TYPES)
