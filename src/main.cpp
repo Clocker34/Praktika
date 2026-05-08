@@ -12,6 +12,7 @@
 #include <shellapi.h>
 #include <string>
 #include <vector>
+#include <thread>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
@@ -47,6 +48,8 @@ enum CommandIds : UINT_PTR {
   ID_TIMER_POLL = 1
 };
 
+constexpr UINT WM_APP_STATE_UPDATED = WM_APP + 100;
+
 enum class GuiState {
   Auth,
   Activation,
@@ -54,6 +57,17 @@ enum class GuiState {
 };
 
 GuiState g_state = GuiState::Auth;
+
+// Background state for async polling
+struct AsyncState {
+  GuiState newState = GuiState::Auth;
+  std::wstring username;
+  std::wstring expiry;
+  bool isLicensed = false;
+};
+
+AsyncState g_asyncResult;
+bool g_pollInProgress = false;
 
 // UI Controls
 HWND g_hAuthTitle = nullptr;
@@ -202,34 +216,50 @@ void UpdateUI(HWND hwnd) {
   UpdateWindow(hwnd);
 }
 
-void CheckState(HWND hwnd) {
-  std::wstring username;
-  long st = Praktika_RpcGetAuthInfo(username);
-  if (st != CYCL_OK || username.empty()) {
-    g_state = GuiState::Auth;
-    g_currentUser.clear();
-    g_isLicensed = false;
+// Background thread: does RPC without blocking UI.
+void CheckStateAsync(HWND hwnd) {
+  if (g_pollInProgress) return;
+  g_pollInProgress = true;
+
+  std::thread([hwnd]() {
+    AsyncState as;
+    std::wstring username;
+    long st = Praktika_RpcGetAuthInfo(username);
+    if (st != CYCL_OK || username.empty()) {
+      as.newState = GuiState::Auth;
+      as.username.clear();
+      as.isLicensed = false;
+    } else {
+      as.username = username;
+      bool isLic = false;
+      std::wstring expiry;
+      st = Praktika_RpcGetLicenseInfo(isLic, expiry);
+      if (st == CYCL_NO_LICENSE || !isLic) {
+        as.newState = GuiState::Activation;
+        as.isLicensed = false;
+      } else {
+        as.newState = GuiState::Main;
+        as.isLicensed = true;
+        as.expiry = expiry;
+      }
+    }
+    g_asyncResult = as;
+    PostMessageW(hwnd, WM_APP_STATE_UPDATED, 0, 0);
+  }).detach();
+}
+
+// Called on UI thread when background poll completes.
+void ApplyAsyncState(HWND hwnd) {
+  g_pollInProgress = false;
+  g_state = g_asyncResult.newState;
+  g_currentUser = g_asyncResult.username;
+  g_isLicensed = g_asyncResult.isLicensed;
+  g_currentExpiry = g_asyncResult.expiry;
+  if (g_state == GuiState::Auth) {
     SetWindowTextW(g_hAuthErr, L"");
-    UpdateUI(hwnd);
-    return;
-  }
-  
-  g_currentUser = username;
-  
-  bool isLic = false;
-  std::wstring expiry;
-  st = Praktika_RpcGetLicenseInfo(isLic, expiry);
-  
-  if (st == CYCL_NO_LICENSE || !isLic) {
-    g_isLicensed = false;
-    g_state = GuiState::Activation;
+  } else if (g_state == GuiState::Activation) {
     SetWindowTextW(g_hActErr, L"");
-  } else {
-    g_isLicensed = true;
-    g_currentExpiry = expiry;
-    g_state = GuiState::Main;
   }
-  
   UpdateUI(hwnd);
 }
 
@@ -241,15 +271,25 @@ void OnLoginClick(HWND hwnd) {
   
   SetWindowTextW(g_hAuthErr, L"Подождите...");
   UpdateWindow(g_hAuthErr);
+  EnableWindow(g_hLoginBtn, FALSE);
   
-  long st = Praktika_RpcLogin(u, p);
+  std::wstring user(u), pass(p);
   SecureZeroMemory(p, sizeof(p));
   
-  if (st != CYCL_OK) {
-    SetWindowTextW(g_hAuthErr, L"Ошибка аутентификации.");
-  } else {
-    CheckState(hwnd);
-  }
+  std::thread([hwnd, user, pass]() {
+    long st = Praktika_RpcLogin(user.c_str(), pass.c_str());
+    // Clear password copy
+    auto passCopy = pass;
+    SecureZeroMemory(&passCopy[0], passCopy.size() * sizeof(wchar_t));
+    
+    if (st != CYCL_OK) {
+      PostMessageW(hwnd, WM_APP_STATE_UPDATED, 1, 0); // 1 = login failed
+    } else {
+      // Trigger a full state check
+      g_pollInProgress = false;
+      CheckStateAsync(hwnd);
+    }
+  }).detach();
 }
 
 void OnActivateClick(HWND hwnd) {
@@ -258,18 +298,28 @@ void OnActivateClick(HWND hwnd) {
   
   SetWindowTextW(g_hActErr, L"Подождите...");
   UpdateWindow(g_hActErr);
+  EnableWindow(g_hActBtn, FALSE);
   
-  long st = Praktika_RpcActivateProduct(c);
-  if (st != CYCL_OK) {
-    SetWindowTextW(g_hActErr, L"Ошибка активации. Проверьте код.");
-  } else {
-    CheckState(hwnd);
-  }
+  std::wstring code(c);
+  
+  std::thread([hwnd, code]() {
+    long st = Praktika_RpcActivateProduct(code.c_str());
+    if (st != CYCL_OK) {
+      PostMessageW(hwnd, WM_APP_STATE_UPDATED, 2, 0); // 2 = activation failed
+    } else {
+      g_pollInProgress = false;
+      CheckStateAsync(hwnd);
+    }
+  }).detach();
 }
 
 void OnLogoutClick(HWND hwnd) {
-  Praktika_RpcLogout();
-  CheckState(hwnd);
+  EnableWindow(g_hLogoutBtn, FALSE);
+  std::thread([hwnd]() {
+    Praktika_RpcLogout();
+    g_pollInProgress = false;
+    CheckStateAsync(hwnd);
+  }).detach();
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -331,12 +381,29 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }, (LPARAM)hFont);
     
     SetTimer(hwnd, ID_TIMER_POLL, 5000, nullptr);
-    CheckState(hwnd);
+    CheckStateAsync(hwnd);
     return 0;
   }
   case WM_TIMER:
     if (wParam == ID_TIMER_POLL) {
-      CheckState(hwnd);
+      CheckStateAsync(hwnd);
+    }
+    return 0;
+  case WM_APP_STATE_UPDATED:
+    if (wParam == 1) {
+      // Login failed
+      EnableWindow(g_hLoginBtn, TRUE);
+      SetWindowTextW(g_hAuthErr, L"Ошибка аутентификации.");
+    } else if (wParam == 2) {
+      // Activation failed
+      EnableWindow(g_hActBtn, TRUE);
+      SetWindowTextW(g_hActErr, L"Ошибка активации. Проверьте код.");
+    } else {
+      // Normal state update
+      ApplyAsyncState(hwnd);
+      EnableWindow(g_hLoginBtn, TRUE);
+      EnableWindow(g_hActBtn, TRUE);
+      EnableWindow(g_hLogoutBtn, TRUE);
     }
     return 0;
   case WM_COMMAND: {
