@@ -13,15 +13,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure (VS 2022, x64)
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Setup MSVC Environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure (Ninja)
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build (Release)
-        run: cmake --build build --config Release -j
+        run: cmake --build build --config Release
 
-      - name: Upload exe
+      - name: Install NSIS
+        run: |
+          choco install nsis -y
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+
+      - name: Create Installer (CPack)
+        run: cd build && cpack -G NSIS -C Release
+
+      - name: Upload artifacts (Praktika Installer & Binaries)
         uses: actions/upload-artifact@v4
         with:
           name: Praktika-Release-x64
-          path: build/bin/Release/Praktika.exe
+          path: |
+            build/bin/Release/*.exe
+            build/Praktika-1.0.0-win64.exe
+            build/*.exe
           if-no-files-found: error
