@@ -1,0 +1,52 @@
+// Windows RPC + ALPC: интерфейсы аутентификации и лицензирования (задание 3).
+// Все методы возвращают long (0 = успех, иначе код ошибки).
+// JWT-токены и лицензионный тикет НЕ передаются клиентам (п.8 ТЗ).
+[
+  uuid(a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d),
+  version(1.0),
+  endpoint("ncalrpc:[PraktikaSvcApi]"),
+  pointer_default(unique)
+]
+interface Praktika_Api
+{
+    // Информация о текущем аутентифицированном пользователе (п.10a).
+    // username — буфер для логина, bufLen — размер в wchar_t.
+    // Возвращает 0 если пользователь аутентифицирован,
+    // 1 если не аутентифицирован (username пустой).
+    long GetAuthInfo(
+        [in] handle_t hBinding,
+        [in] long bufLen,
+        [out, size_is(bufLen)] wchar_t username[]
+    );
+
+    // Вход в аккаунт (п.10b).
+    // Возвращает 0 при успехе, код ошибки при неудаче.
+    long Login(
+        [in] handle_t hBinding,
+        [in, string] const wchar_t* username,
+        [in, string] const wchar_t* password
+    );
+
+    // Выход из аккаунта (п.10b).
+    long Logout(
+        [in] handle_t hBinding
+    );
+
+    // Информация об активной лицензии (п.10c).
+    // pIsLicensed: 1 = есть лицензия, 0 = нет.
+    // expiryDate — буфер для даты истечения (формат "YYYY-MM-DD HH:MM:SS").
+    // Возвращает 0 при успехе, код ошибки при отсутствии лицензии.
+    long GetLicenseInfo(
+        [in] handle_t hBinding,
+        [out] long* pIsLicensed,
+        [in] long expiryBufLen,
+        [out, size_is(expiryBufLen)] wchar_t expiryDate[]
+    );
+
+    // Активация продукта (п.10d).
+    // Возвращает 0 при успехе, код ошибки при неудаче.
+    long ActivateProduct(
+        [in] handle_t hBinding,
+        [in, string] const wchar_t* activationCode
+    );
+}
