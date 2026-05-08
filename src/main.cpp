@@ -1,8 +1,17 @@
-// Praktika — задание 1: Win32 трей с одним экземпляром на пользователя.
-// Выполнены 12 пунктов требования (см. README).
+// Praktika — задание 1 + интеграция со службой (задание 2):
+//   * При старте: проверка состояния службы; если STOPPED — запустить и выйти
+//     (зад.2 GUI п.1). Если RUNNING — проверить, что мы запущены службой
+//     (зад.2 GUI п.2: parent == service, либо корректный /fromservice:<pid>).
+//   * Меню «Файл → Выход» и «Выход» в трее → RPC RequestStop (зад.2 GUI п.3, п.4).
+#include "app_config.h"
+#include "service_check.h"
+#include "service_client.h"
+#include "api_client.h"
+
 #include <windows.h>
 #include <shellapi.h>
 #include <string>
+#include <vector>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
@@ -12,13 +21,10 @@ namespace {
 
 constexpr wchar_t kWindowClass[] = L"Praktika_TrayWindow";
 constexpr wchar_t kWindowTitle[] = L"Praktika";
-// П.10: один процесс на пользователя — Local\\ ограничивает мьютекс сессией.
-constexpr wchar_t kSingletonMutex[] = L"Local\\Praktika_SingleInstance";
 
 constexpr UINT kTrayCallbackMsg = WM_APP + 1;
 constexpr UINT kTrayIconId = 1;
 
-// П.7: поддержка скрытого старта; принимаем «/background», «-background», «--silent».
 constexpr wchar_t kArgBackground1[] = L"/background";
 constexpr wchar_t kArgBackground2[] = L"-background";
 constexpr wchar_t kArgSilent1[] = L"--silent";
@@ -28,10 +34,53 @@ enum CommandIds : UINT_PTR {
   IDM_FILE_EXIT = 100,
   IDM_TRAY_OPEN = 101,
   IDM_TRAY_EXIT = 102,
+
+  ID_USER_EDIT = 200,
+  ID_PASS_EDIT,
+  ID_LOGIN_BTN,
+  
+  ID_CODE_EDIT,
+  ID_ACTIVATE_BTN,
+  
+  ID_LOGOUT_BTN,
+  
+  ID_TIMER_POLL = 1
 };
 
+enum class GuiState {
+  Auth,
+  Activation,
+  Main
+};
+
+GuiState g_state = GuiState::Auth;
+
+// UI Controls
+HWND g_hAuthTitle = nullptr;
+HWND g_hUserLbl = nullptr;
+HWND g_hUserEdit = nullptr;
+HWND g_hPassLbl = nullptr;
+HWND g_hPassEdit = nullptr;
+HWND g_hLoginBtn = nullptr;
+HWND g_hAuthErr = nullptr;
+
+HWND g_hActTitle = nullptr;
+HWND g_hCodeLbl = nullptr;
+HWND g_hCodeEdit = nullptr;
+HWND g_hActBtn = nullptr;
+HWND g_hActErr = nullptr;
+
+HWND g_hMainTitle = nullptr;
+HWND g_hStatusLbl = nullptr;
+HWND g_hMainUserLbl = nullptr;
+HWND g_hLicLbl = nullptr;
+HWND g_hLogoutBtn = nullptr;
+
+std::wstring g_currentUser;
+std::wstring g_currentExpiry;
+bool g_isLicensed = false;
+
 HANDLE g_singletonMutex = nullptr;
-// П.6: системное сообщение TaskbarCreated, динамический id.
 UINT g_msgTaskbarCreated = 0;
 
 bool ParseStartHidden() {
@@ -54,9 +103,8 @@ bool ParseStartHidden() {
   return hidden;
 }
 
-// П.10: true — этот процесс должен немедленно завершиться, не показывая трей.
 bool AcquireSingletonOrExit() {
-  g_singletonMutex = CreateMutexW(nullptr, FALSE, kSingletonMutex);
+  g_singletonMutex = CreateMutexW(nullptr, FALSE, PRAKTIKA_SINGLETON_MUTEX);
   if (!g_singletonMutex) {
     return true;
   }
@@ -90,7 +138,6 @@ void RemoveTrayIcon(HWND owner) {
   Shell_NotifyIconW(NIM_DELETE, &nid);
 }
 
-// П.2 / П.4: показать и активировать главное окно.
 void ShowAndActivateMainWindow(HWND hwnd) {
   if (!IsWindowVisible(hwnd)) {
     ShowWindow(hwnd, SW_SHOW);
@@ -99,7 +146,6 @@ void ShowAndActivateMainWindow(HWND hwnd) {
   SetForegroundWindow(hwnd);
 }
 
-// П.3 / П.4 / П.5: правый клик — контекстное меню «Открыть» / «Выход».
 void ShowTrayContextMenu(HWND hwnd) {
   HMENU menu = CreatePopupMenu();
   if (!menu) {
@@ -108,10 +154,8 @@ void ShowTrayContextMenu(HWND hwnd) {
   AppendMenuW(menu, MF_STRING, IDM_TRAY_OPEN, L"Открыть");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu, MF_STRING, IDM_TRAY_EXIT, L"Выход");
-
   POINT pt{};
   GetCursorPos(&pt);
-  // Нужно «фокусом», иначе меню не закроется по клику вне окна.
   SetForegroundWindow(hwnd);
   TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN, pt.x,
                  pt.y, 0, hwnd, nullptr);
@@ -119,8 +163,116 @@ void ShowTrayContextMenu(HWND hwnd) {
   DestroyMenu(menu);
 }
 
+void UpdateUI(HWND hwnd) {
+  bool isAuth = (g_state == GuiState::Auth);
+  ShowWindow(g_hAuthTitle, isAuth ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hUserLbl, isAuth ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hUserEdit, isAuth ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hPassLbl, isAuth ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hPassEdit, isAuth ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hLoginBtn, isAuth ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hAuthErr, isAuth ? SW_SHOW : SW_HIDE);
+
+  bool isAct = (g_state == GuiState::Activation);
+  ShowWindow(g_hActTitle, isAct ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hCodeLbl, isAct ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hCodeEdit, isAct ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hActBtn, isAct ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hActErr, isAct ? SW_SHOW : SW_HIDE);
+
+  bool isMain = (g_state == GuiState::Main);
+  ShowWindow(g_hMainTitle, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hStatusLbl, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hMainUserLbl, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hLicLbl, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hLogoutBtn, isMain ? SW_SHOW : SW_HIDE);
+
+  if (isMain) {
+    SetWindowTextW(g_hMainUserLbl, (L"Пользователь: " + g_currentUser).c_str());
+    if (g_isLicensed) {
+      SetWindowTextW(g_hStatusLbl, L"Антивирус: АКТИВЕН (разблокирован)");
+      SetWindowTextW(g_hLicLbl, (L"Лицензия до: " + g_currentExpiry).c_str());
+    } else {
+      SetWindowTextW(g_hStatusLbl, L"Антивирус: ЗАБЛОКИРОВАН (нет лицензии)");
+      SetWindowTextW(g_hLicLbl, L"Лицензия отсутствует");
+    }
+  }
+
+  InvalidateRect(hwnd, nullptr, TRUE);
+  UpdateWindow(hwnd);
+}
+
+void CheckState(HWND hwnd) {
+  std::wstring username;
+  long st = Praktika_RpcGetAuthInfo(username);
+  if (st != CYCL_OK || username.empty()) {
+    g_state = GuiState::Auth;
+    g_currentUser.clear();
+    g_isLicensed = false;
+    SetWindowTextW(g_hAuthErr, L"");
+    UpdateUI(hwnd);
+    return;
+  }
+  
+  g_currentUser = username;
+  
+  bool isLic = false;
+  std::wstring expiry;
+  st = Praktika_RpcGetLicenseInfo(isLic, expiry);
+  
+  if (st == CYCL_NO_LICENSE || !isLic) {
+    g_isLicensed = false;
+    g_state = GuiState::Activation;
+    SetWindowTextW(g_hActErr, L"");
+  } else {
+    g_isLicensed = true;
+    g_currentExpiry = expiry;
+    g_state = GuiState::Main;
+  }
+  
+  UpdateUI(hwnd);
+}
+
+void OnLoginClick(HWND hwnd) {
+  wchar_t u[256]{};
+  wchar_t p[256]{};
+  GetWindowTextW(g_hUserEdit, u, 256);
+  GetWindowTextW(g_hPassEdit, p, 256);
+  
+  SetWindowTextW(g_hAuthErr, L"Подождите...");
+  UpdateWindow(g_hAuthErr);
+  
+  long st = Praktika_RpcLogin(u, p);
+  SecureZeroMemory(p, sizeof(p));
+  
+  if (st != CYCL_OK) {
+    SetWindowTextW(g_hAuthErr, L"Ошибка аутентификации.");
+  } else {
+    CheckState(hwnd);
+  }
+}
+
+void OnActivateClick(HWND hwnd) {
+  wchar_t c[256]{};
+  GetWindowTextW(g_hCodeEdit, c, 256);
+  
+  SetWindowTextW(g_hActErr, L"Подождите...");
+  UpdateWindow(g_hActErr);
+  
+  long st = Praktika_RpcActivateProduct(c);
+  if (st != CYCL_OK) {
+    SetWindowTextW(g_hActErr, L"Ошибка активации. Проверьте код.");
+  } else {
+    CheckState(hwnd);
+  }
+}
+
+void OnLogoutClick(HWND hwnd) {
+  Praktika_RpcLogout();
+  CheckState(hwnd);
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-  // П.6: после рестарта Explorer окно получит TaskbarCreated — повторно добавить иконку.
   if (msg == g_msgTaskbarCreated) {
     AddTrayIcon(hwnd);
     return 0;
@@ -140,26 +292,69 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       MessageBoxW(hwnd, L"Не удалось добавить иконку в трей.",
                   L"Praktika — ошибка", MB_OK | MB_ICONERROR);
     }
-    // П.9: главное меню окна с пунктом «Файл → Выход».
     HMENU bar = CreateMenu();
     HMENU file = CreateMenu();
     AppendMenuW(file, MF_STRING, IDM_FILE_EXIT, L"Выход");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"Файл");
     SetMenu(hwnd, bar);
+    
+    // Create UI Controls directly on main window
+    HFONT hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(hwnd, GWLP_HINSTANCE);
+    
+    // --- Auth Controls ---
+    g_hAuthTitle = CreateWindowExW(0, L"STATIC", L"Вход в систему", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, hwnd, nullptr, hInst, nullptr);
+    g_hUserLbl = CreateWindowExW(0, L"STATIC", L"Логин:", WS_CHILD | WS_VISIBLE, 20, 60, 100, 20, hwnd, nullptr, hInst, nullptr);
+    g_hUserEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 130, 60, 200, 24, hwnd, (HMENU)ID_USER_EDIT, hInst, nullptr);
+    g_hPassLbl = CreateWindowExW(0, L"STATIC", L"Пароль:", WS_CHILD | WS_VISIBLE, 20, 100, 100, 20, hwnd, nullptr, hInst, nullptr);
+    g_hPassEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD, 130, 100, 200, 24, hwnd, (HMENU)ID_PASS_EDIT, hInst, nullptr);
+    g_hLoginBtn = CreateWindowExW(0, L"BUTTON", L"Вход", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 130, 140, 100, 30, hwnd, (HMENU)ID_LOGIN_BTN, hInst, nullptr);
+    g_hAuthErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 180, 400, 20, hwnd, nullptr, hInst, nullptr);
+    
+    // --- Activation Controls ---
+    g_hActTitle = CreateWindowExW(0, L"STATIC", L"Активация продукта", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, hwnd, nullptr, hInst, nullptr);
+    g_hCodeLbl = CreateWindowExW(0, L"STATIC", L"Код:", WS_CHILD | WS_VISIBLE, 20, 60, 100, 20, hwnd, nullptr, hInst, nullptr);
+    g_hCodeEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 130, 60, 200, 24, hwnd, (HMENU)ID_CODE_EDIT, hInst, nullptr);
+    g_hActBtn = CreateWindowExW(0, L"BUTTON", L"Активировать", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 130, 100, 150, 30, hwnd, (HMENU)ID_ACTIVATE_BTN, hInst, nullptr);
+    g_hActErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 140, 400, 20, hwnd, nullptr, hInst, nullptr);
+    
+    // --- Main Controls ---
+    g_hMainTitle = CreateWindowExW(0, L"STATIC", L"Главное окно", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, hwnd, nullptr, hInst, nullptr);
+    g_hStatusLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 60, 400, 20, hwnd, nullptr, hInst, nullptr);
+    g_hMainUserLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 100, 400, 20, hwnd, nullptr, hInst, nullptr);
+    g_hLicLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 140, 400, 20, hwnd, nullptr, hInst, nullptr);
+    g_hLogoutBtn = CreateWindowExW(0, L"BUTTON", L"Выйти", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 20, 180, 100, 30, hwnd, (HMENU)ID_LOGOUT_BTN, hInst, nullptr);
+    
+    EnumChildWindows(hwnd, [](HWND child, LPARAM param) -> BOOL {
+      SendMessageW(child, WM_SETFONT, (WPARAM)param, MAKELPARAM(TRUE, 0));
+      return TRUE;
+    }, (LPARAM)hFont);
+    
+    SetTimer(hwnd, ID_TIMER_POLL, 5000, nullptr);
+    CheckState(hwnd);
     return 0;
   }
+  case WM_TIMER:
+    if (wParam == ID_TIMER_POLL) {
+      CheckState(hwnd);
+    }
+    return 0;
   case WM_COMMAND: {
     const UINT id = LOWORD(wParam);
     if (id == IDM_TRAY_OPEN) {
       ShowAndActivateMainWindow(hwnd);
     } else if (id == IDM_TRAY_EXIT || id == IDM_FILE_EXIT) {
-      // П.5 / П.9: оба «Выход» завершают приложение.
-      DestroyWindow(hwnd);
+      Praktika_CallRequestStop();
+    } else if (id == ID_LOGIN_BTN) {
+      OnLoginClick(hwnd);
+    } else if (id == ID_ACTIVATE_BTN) {
+      OnActivateClick(hwnd);
+    } else if (id == ID_LOGOUT_BTN) {
+      OnLogoutClick(hwnd);
     }
     return 0;
   }
   case WM_CLOSE:
-    // П.8: крестик скрывает окно, процесс продолжает работу из трея.
     ShowWindow(hwnd, SW_HIDE);
     return 0;
   case WM_DESTROY:
@@ -175,7 +370,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
                       _In_ LPWSTR, _In_ int) {
-  // П.10: проверка до создания окна и иконки трея.
+  // Зад.2 GUI п.1: служба остановлена → запустить, дождаться, выйти.
+  if (Praktika_BootstrapServiceAndExit()) {
+    return 0;
+  }
+
+  // Зад.2 GUI п.2: процесс должен быть запущен службой; иначе — выход.
+  // На Win10+ CreateProcessAsUser не всегда выставляет parent равным процессу
+  // службы, поэтому проверяем И parent==svcPid, И /fromservice:<svcPid>.
+  const DWORD svcPid = Praktika_GetServiceProcessId();
+  const DWORD parent = Praktika_GetParentProcessId();
+  const DWORD fromArg = Praktika_ParseFromServiceArg();
+  const bool okParent = (svcPid != 0 && parent == svcPid);
+  const bool okFromArg = (svcPid != 0 && fromArg == svcPid && fromArg != 0);
+  if (!okParent && !okFromArg) {
+    return 0;
+  }
+
+  // П.10 задания 1: один экземпляр на пользователя.
   if (AcquireSingletonOrExit()) {
     return 0;
   }
@@ -210,7 +422,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
     return 1;
   }
 
-  // П.7: запуск с /background — окно скрыто, иконка в трее уже есть.
+  // Зад.2 п.1 службы: GUI стартует со скрытым окном
+  // (служба передаёт /background --silent).
   if (ParseStartHidden()) {
     ShowWindow(main, SW_HIDE);
   } else {

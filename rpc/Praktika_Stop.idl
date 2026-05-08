@@ -1,0 +1,11 @@
+// Windows RPC + ALPC: интерфейс остановки службы (задание 2 п.5).
+[
+  uuid(7a3f1e2c-9b41-4e0a-8f5d-2bd9c0d1e234),
+  version(1.0),
+  endpoint("ncalrpc:[PraktikaSvcStop]"),
+  pointer_default(unique)
+]
+interface Praktika_Stop
+{
+  void RequestStop( void );
+}

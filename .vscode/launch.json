@@ -27,6 +27,26 @@
       "args": ["/background"],
       "cwd": "${workspaceFolder}/build/bin/Release",
       "stopAtEntry": false
+    },
+    {
+      "name": "PraktikaService install",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/Release/PraktikaService.exe",
+      "args": ["install"],
+      "cwd": "${workspaceFolder}/build/bin/Release",
+      "console": "externalTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "PraktikaService uninstall",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/Release/PraktikaService.exe",
+      "args": ["uninstall"],
+      "cwd": "${workspaceFolder}/build/bin/Release",
+      "console": "externalTerminal",
+      "stopAtEntry": false
     }
   ]
 }
