@@ -57,8 +57,8 @@ std::string WideToUtf8(const std::wstring& w) {
   return s;
 }
 
-// Получить первый MAC-адрес активного адаптера.
-std::string GetFirstMacAddress() {
+// Получить первый MAC-адрес активного адаптера (физический).
+std::string GetPhysicalMacAddress() {
   ULONG bufLen = 0;
   GetAdaptersAddresses(AF_INET, 0, nullptr, nullptr, &bufLen);
   if (bufLen == 0) return "00:00:00:00:00:00";
@@ -79,6 +79,34 @@ std::string GetFirstMacAddress() {
     }
   }
   return "00:00:00:00:00:00";
+}
+
+// Генерация виртуального MAC-адреса на основе userId + hostname.
+// Позволяет нескольким пользователям активировать лицензию на одном ПК
+// (как в Steam), потому что каждый userId получает свой уникальный "device".
+std::string MakeVirtualMac(const std::string& userId) {
+  char host[MAX_COMPUTERNAME_LENGTH + 1]{};
+  DWORD sz = sizeof(host);
+  GetComputerNameA(host, &sz);
+
+  // Simple hash: FNV-1a over userId + hostname
+  std::string seed = userId + ":" + host;
+  unsigned long long h = 14695981039346656037ULL;
+  for (char c : seed) {
+    h ^= static_cast<unsigned char>(c);
+    h *= 1099511628211ULL;
+  }
+  // Build MAC from hash bytes (locally administered, unicast: bit 1 set, bit 0 clear)
+  unsigned char mac[6];
+  for (int i = 0; i < 6; ++i)
+    mac[i] = static_cast<unsigned char>((h >> (i * 8)) & 0xFF);
+  mac[0] = (mac[0] | 0x02) & 0xFE;  // locally administered, unicast
+
+  char buf[18];
+  sprintf_s(buf, "%02X:%02X:%02X:%02X:%02X:%02X",
+            (unsigned)mac[0], (unsigned)mac[1], (unsigned)mac[2],
+            (unsigned)mac[3], (unsigned)mac[4], (unsigned)mac[5]);
+  return buf;
 }
 
 // Получить имя компьютера.
@@ -223,12 +251,13 @@ long Activate(const wchar_t* activationCode) {
   const std::string token = auth::GetAccessToken();
   if (token.empty()) return CYCL_NOT_AUTHENTICATED;
 
-  // Получаем MAC-адрес и имя устройства.
-  const std::string mac = GetFirstMacAddress();
-  const std::string devName = GetMachineName();
-
-  // Получаем userId из JWT-токена (claim "uid" — UUID пользователя).
+  // Получаем userId из JWT-токена (claim "uid").
   const std::string userId = jwt::GetClaim(token, "uid");
+
+  // Виртуальный MAC: уникален для пары (userId, hostname).
+  // Позволяет нескольким пользователям активировать на одном ПК.
+  const std::string mac = MakeVirtualMac(userId);
+  const std::string devName = GetMachineName();
 
   std::string codeUtf8 = WideToUtf8(activationCode);
 
@@ -248,6 +277,7 @@ long Activate(const wchar_t* activationCode) {
 
   HttpResponse resp = HttpPostJson(PRAKTIKA_API_HOST, PRAKTIKA_API_PORT,
                                    PRAKTIKA_API_ACTIVATE, body, token);
+
   if (!resp.ok()) {
     return CYCL_ACTIVATION_FAILED;
   }
