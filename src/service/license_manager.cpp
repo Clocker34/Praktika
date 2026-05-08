@@ -227,8 +227,8 @@ long Activate(const wchar_t* activationCode) {
   const std::string mac = GetFirstMacAddress();
   const std::string devName = GetMachineName();
 
-  // Получаем userId из JWT-токена (claim "sub").
-  const std::string userId = jwt::GetClaim(token, "sub");
+  // Получаем userId из JWT-токена (claim "uid" — UUID пользователя).
+  const std::string userId = jwt::GetClaim(token, "uid");
 
   std::string codeUtf8 = WideToUtf8(activationCode);
 

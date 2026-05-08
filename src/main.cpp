@@ -17,6 +17,26 @@
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "gdi32.lib")
+
+// ---- Dark Theme Colors ----
+static constexpr COLORREF CLR_BG        = RGB(24, 24, 36);    // main background
+static constexpr COLORREF CLR_CARD      = RGB(34, 34, 52);    // card panels
+static constexpr COLORREF CLR_TEXT      = RGB(220, 220, 235);  // primary text
+static constexpr COLORREF CLR_TEXT_DIM  = RGB(140, 140, 165);  // secondary text
+static constexpr COLORREF CLR_ACCENT    = RGB(88, 101, 242);   // Discord-blue accent
+static constexpr COLORREF CLR_GREEN     = RGB(87, 242, 135);   // success green
+static constexpr COLORREF CLR_RED       = RGB(237, 66, 69);    // error red
+static constexpr COLORREF CLR_EDIT_BG   = RGB(44, 44, 64);     // edit field bg
+static constexpr COLORREF CLR_EDIT_TEXT = RGB(230, 230, 245);  // edit field text
+static constexpr COLORREF CLR_YELLOW    = RGB(254, 231, 92);   // warning
+
+static HBRUSH g_hBrBg     = nullptr;
+static HBRUSH g_hBrCard   = nullptr;
+static HBRUSH g_hBrEdit   = nullptr;
+static HFONT  g_hFontUI   = nullptr;   // 14px Segoe UI
+static HFONT  g_hFontTitle = nullptr;  // 20px Segoe UI Semibold
+static HFONT  g_hFontSmall = nullptr;  // 12px Segoe UI
 
 namespace {
 
@@ -349,36 +369,40 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     SetMenu(hwnd, bar);
     
     // Create UI Controls directly on main window
-    HFONT hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(hwnd, GWLP_HINSTANCE);
     
     // --- Auth Controls ---
-    g_hAuthTitle = CreateWindowExW(0, L"STATIC", L"Вход в систему", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, hwnd, nullptr, hInst, nullptr);
-    g_hUserLbl = CreateWindowExW(0, L"STATIC", L"Логин:", WS_CHILD | WS_VISIBLE, 20, 60, 100, 20, hwnd, nullptr, hInst, nullptr);
-    g_hUserEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 130, 60, 200, 24, hwnd, (HMENU)ID_USER_EDIT, hInst, nullptr);
-    g_hPassLbl = CreateWindowExW(0, L"STATIC", L"Пароль:", WS_CHILD | WS_VISIBLE, 20, 100, 100, 20, hwnd, nullptr, hInst, nullptr);
-    g_hPassEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD, 130, 100, 200, 24, hwnd, (HMENU)ID_PASS_EDIT, hInst, nullptr);
-    g_hLoginBtn = CreateWindowExW(0, L"BUTTON", L"Вход", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 130, 140, 100, 30, hwnd, (HMENU)ID_LOGIN_BTN, hInst, nullptr);
-    g_hAuthErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 180, 400, 20, hwnd, nullptr, hInst, nullptr);
+    g_hAuthTitle = CreateWindowExW(0, L"STATIC", L"◉  Вход в систему", WS_CHILD | WS_VISIBLE, 30, 25, 350, 28, hwnd, nullptr, hInst, nullptr);
+    g_hUserLbl = CreateWindowExW(0, L"STATIC", L"Логин", WS_CHILD | WS_VISIBLE, 30, 75, 100, 20, hwnd, nullptr, hInst, nullptr);
+    g_hUserEdit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, 30, 98, 340, 28, hwnd, (HMENU)ID_USER_EDIT, hInst, nullptr);
+    g_hPassLbl = CreateWindowExW(0, L"STATIC", L"Пароль", WS_CHILD | WS_VISIBLE, 30, 140, 100, 20, hwnd, nullptr, hInst, nullptr);
+    g_hPassEdit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD, 30, 163, 340, 28, hwnd, (HMENU)ID_PASS_EDIT, hInst, nullptr);
+    g_hLoginBtn = CreateWindowExW(0, L"BUTTON", L"Войти", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 30, 210, 340, 38, hwnd, (HMENU)ID_LOGIN_BTN, hInst, nullptr);
+    g_hAuthErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 260, 340, 22, hwnd, nullptr, hInst, nullptr);
     
     // --- Activation Controls ---
-    g_hActTitle = CreateWindowExW(0, L"STATIC", L"Активация продукта", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, hwnd, nullptr, hInst, nullptr);
-    g_hCodeLbl = CreateWindowExW(0, L"STATIC", L"Код:", WS_CHILD | WS_VISIBLE, 20, 60, 100, 20, hwnd, nullptr, hInst, nullptr);
-    g_hCodeEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 130, 60, 200, 24, hwnd, (HMENU)ID_CODE_EDIT, hInst, nullptr);
-    g_hActBtn = CreateWindowExW(0, L"BUTTON", L"Активировать", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 130, 100, 150, 30, hwnd, (HMENU)ID_ACTIVATE_BTN, hInst, nullptr);
-    g_hActErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 140, 400, 20, hwnd, nullptr, hInst, nullptr);
+    g_hActTitle = CreateWindowExW(0, L"STATIC", L"◉  Активация продукта", WS_CHILD | WS_VISIBLE, 30, 25, 350, 28, hwnd, nullptr, hInst, nullptr);
+    g_hCodeLbl = CreateWindowExW(0, L"STATIC", L"Код лицензии", WS_CHILD | WS_VISIBLE, 30, 75, 200, 20, hwnd, nullptr, hInst, nullptr);
+    g_hCodeEdit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, 30, 98, 340, 28, hwnd, (HMENU)ID_CODE_EDIT, hInst, nullptr);
+    g_hActBtn = CreateWindowExW(0, L"BUTTON", L"Активировать", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 30, 145, 340, 38, hwnd, (HMENU)ID_ACTIVATE_BTN, hInst, nullptr);
+    g_hActErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 195, 340, 22, hwnd, nullptr, hInst, nullptr);
     
     // --- Main Controls ---
-    g_hMainTitle = CreateWindowExW(0, L"STATIC", L"Главное окно", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, hwnd, nullptr, hInst, nullptr);
-    g_hStatusLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 60, 400, 20, hwnd, nullptr, hInst, nullptr);
-    g_hMainUserLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 100, 400, 20, hwnd, nullptr, hInst, nullptr);
-    g_hLicLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 20, 140, 400, 20, hwnd, nullptr, hInst, nullptr);
-    g_hLogoutBtn = CreateWindowExW(0, L"BUTTON", L"Выйти", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 20, 180, 100, 30, hwnd, (HMENU)ID_LOGOUT_BTN, hInst, nullptr);
+    g_hMainTitle = CreateWindowExW(0, L"STATIC", L"◉  Praktika Antivirus", WS_CHILD | WS_VISIBLE, 30, 25, 350, 28, hwnd, nullptr, hInst, nullptr);
+    g_hStatusLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 80, 340, 24, hwnd, nullptr, hInst, nullptr);
+    g_hMainUserLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 120, 340, 22, hwnd, nullptr, hInst, nullptr);
+    g_hLicLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 155, 340, 22, hwnd, nullptr, hInst, nullptr);
+    g_hLogoutBtn = CreateWindowExW(0, L"BUTTON", L"Выйти из аккаунта", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 30, 200, 340, 38, hwnd, (HMENU)ID_LOGOUT_BTN, hInst, nullptr);
     
-    EnumChildWindows(hwnd, [](HWND child, LPARAM param) -> BOOL {
-      SendMessageW(child, WM_SETFONT, (WPARAM)param, MAKELPARAM(TRUE, 0));
-      return TRUE;
-    }, (LPARAM)hFont);
+    // Apply fonts: titles get big font, rest get UI font
+    SendMessageW(g_hAuthTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
+    SendMessageW(g_hActTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
+    SendMessageW(g_hMainTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
+    HWND allCtrls[] = { g_hUserLbl, g_hUserEdit, g_hPassLbl, g_hPassEdit,
+      g_hLoginBtn, g_hAuthErr, g_hCodeLbl, g_hCodeEdit, g_hActBtn, g_hActErr,
+      g_hStatusLbl, g_hMainUserLbl, g_hLicLbl, g_hLogoutBtn };
+    for (HWND h : allCtrls)
+      SendMessageW(h, WM_SETFONT, (WPARAM)g_hFontUI, TRUE);
     
     SetTimer(hwnd, ID_TIMER_POLL, 5000, nullptr);
     CheckStateAsync(hwnd);
@@ -421,6 +445,71 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     return 0;
   }
+  case WM_CTLCOLORSTATIC: {
+    HDC hdc = (HDC)wParam;
+    HWND ctrl = (HWND)lParam;
+    SetBkMode(hdc, TRANSPARENT);
+    // Title labels
+    if (ctrl == g_hAuthTitle || ctrl == g_hActTitle || ctrl == g_hMainTitle) {
+      SetTextColor(hdc, CLR_TEXT);
+    }
+    // Error labels (red/yellow)
+    else if (ctrl == g_hAuthErr || ctrl == g_hActErr) {
+      SetTextColor(hdc, CLR_RED);
+    }
+    // Status label — green if licensed, red otherwise
+    else if (ctrl == g_hStatusLbl) {
+      SetTextColor(hdc, g_isLicensed ? CLR_GREEN : CLR_RED);
+    }
+    // Dim labels
+    else if (ctrl == g_hUserLbl || ctrl == g_hPassLbl || ctrl == g_hCodeLbl) {
+      SetTextColor(hdc, CLR_TEXT_DIM);
+    }
+    // Normal text
+    else {
+      SetTextColor(hdc, CLR_TEXT);
+    }
+    return (LRESULT)g_hBrBg;
+  }
+  case WM_CTLCOLOREDIT: {
+    HDC hdc = (HDC)wParam;
+    SetTextColor(hdc, CLR_EDIT_TEXT);
+    SetBkColor(hdc, CLR_EDIT_BG);
+    return (LRESULT)g_hBrEdit;
+  }
+  case WM_DRAWITEM: {
+    auto* di = (DRAWITEMSTRUCT*)lParam;
+    if (di->CtlType != ODT_BUTTON) break;
+    COLORREF bg = CLR_ACCENT;
+    if (di->CtlID == ID_LOGOUT_BTN) bg = RGB(60, 60, 80);
+    if (di->itemState & ODS_SELECTED) {
+      bg = RGB(GetRValue(bg)*3/4, GetGValue(bg)*3/4, GetBValue(bg)*3/4);
+    }
+    if (di->itemState & ODS_DISABLED) bg = RGB(60,60,75);
+    // Rounded rect
+    HBRUSH hbr = CreateSolidBrush(bg);
+    HPEN pen = CreatePen(PS_SOLID, 1, bg);
+    SelectObject(di->hDC, hbr);
+    SelectObject(di->hDC, pen);
+    RoundRect(di->hDC, di->rcItem.left, di->rcItem.top,
+              di->rcItem.right, di->rcItem.bottom, 8, 8);
+    // Text
+    SetBkMode(di->hDC, TRANSPARENT);
+    SetTextColor(di->hDC, (di->itemState & ODS_DISABLED) ? CLR_TEXT_DIM : RGB(255,255,255));
+    SelectObject(di->hDC, g_hFontUI);
+    wchar_t txt[128]{};
+    GetWindowTextW(di->hwndItem, txt, 128);
+    DrawTextW(di->hDC, txt, -1, &di->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    DeleteObject(hbr);
+    DeleteObject(pen);
+    // Focus rect
+    if (di->itemState & ODS_FOCUS) {
+      RECT r = di->rcItem;
+      InflateRect(&r, -3, -3);
+      DrawFocusRect(di->hDC, &r);
+    }
+    return TRUE;
+  }
   case WM_CLOSE:
     ShowWindow(hwnd, SW_HIDE);
     return 0;
@@ -462,6 +551,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
   g_msgTaskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
 
   WNDCLASSEXW wc{};
+  // Create dark theme resources.
+  g_hBrBg   = CreateSolidBrush(CLR_BG);
+  g_hBrCard = CreateSolidBrush(CLR_CARD);
+  g_hBrEdit = CreateSolidBrush(CLR_EDIT_BG);
+  g_hFontUI    = CreateFontW(-16, 0,0,0, FW_NORMAL,0,0,0, DEFAULT_CHARSET,0,0, CLEARTYPE_QUALITY,0, L"Segoe UI");
+  g_hFontTitle = CreateFontW(-22, 0,0,0, FW_SEMIBOLD,0,0,0, DEFAULT_CHARSET,0,0, CLEARTYPE_QUALITY,0, L"Segoe UI");
+  g_hFontSmall = CreateFontW(-13, 0,0,0, FW_NORMAL,0,0,0, DEFAULT_CHARSET,0,0, CLEARTYPE_QUALITY,0, L"Segoe UI");
+
   wc.cbSize = sizeof(wc);
   wc.style = CS_HREDRAW | CS_VREDRAW;
   wc.lpfnWndProc = WndProc;
@@ -470,7 +567,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
       nullptr, reinterpret_cast<LPCWSTR>(IDI_APPLICATION), IMAGE_ICON, 0, 0,
       LR_SHARED));
   wc.hCursor = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
-  wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+  wc.hbrBackground = g_hBrBg;
   wc.lpszClassName = kWindowClass;
   if (!RegisterClassExW(&wc)) {
     if (g_singletonMutex) {
@@ -481,7 +578,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
 
   HWND main = CreateWindowExW(0, kWindowClass, kWindowTitle,
                               WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                              640, 480, nullptr, nullptr, hInstance, nullptr);
+                              420, 360, nullptr, nullptr, hInstance, nullptr);
   if (!main) {
     if (g_singletonMutex) {
       CloseHandle(g_singletonMutex);
