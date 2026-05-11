@@ -49,4 +49,40 @@ interface Praktika_Api
         [in] handle_t hBinding,
         [in, string] const wchar_t* activationCode
     );
+
+    // ---- Задание 3 (АВ-движок): п.7 — информация об АВ-базах ----
+    // pRecordCount — количество записей в базе.
+    // releaseDate — буфер для даты выпуска.
+    // pLoaded — 1 если загружена, 0 иначе.
+    long GetAvDbInfo(
+        [in] handle_t hBinding,
+        [out] long* pLoaded,
+        [out] long* pRecordCount,
+        [in] long dateBufLen,
+        [out, size_is(dateBufLen)] wchar_t releaseDate[]
+    );
+
+    // ---- Задание 3 (АВ-движок): п.6 — сканирование файла ----
+    // pIsThreat — 1 если угроза, 0 иначе.
+    // threatName — имя угрозы (буфер).
+    long ScanFilePath(
+        [in] handle_t hBinding,
+        [in, string] const wchar_t* filePath,
+        [out] long* pIsThreat,
+        [in] long nameBufLen,
+        [out, size_is(nameBufLen)] wchar_t threatName[]
+    );
+
+    // ---- Задание 3 (АВ-движок): п.6 — сканирование директории ----
+    // pTotalFiles, pScannedFiles, pThreatsFound — статистика.
+    // threatList — строка с перечнем угроз (path|name\n...).
+    long ScanDirPath(
+        [in] handle_t hBinding,
+        [in, string] const wchar_t* dirPath,
+        [out] long* pTotalFiles,
+        [out] long* pScannedFiles,
+        [out] long* pThreatsFound,
+        [in] long listBufLen,
+        [out, size_is(listBufLen)] wchar_t threatList[]
+    );
 }

@@ -46,6 +46,8 @@ add_executable(PraktikaService
   src/service/license_manager.cpp
   src/service/http_client.cpp
   src/service/json_parser.cpp
+  src/service/av_database.cpp
+  src/service/scan_engine.cpp
   rpc/Praktika_Stop_s.c
   rpc/Praktika_Api_s.c
   rpc/midl_user.c
@@ -56,7 +58,7 @@ target_compile_definitions(PraktikaService PRIVATE UNICODE _UNICODE)
 set_property(TARGET PraktikaService PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_link_libraries(PraktikaService PRIVATE
-  advapi32 user32 Wtsapi32 Userenv Shlwapi shell32 Rpcrt4 Winhttp)
+  advapi32 user32 Wtsapi32 Userenv Shlwapi shell32 Rpcrt4 Winhttp Bcrypt)
 
 # Размещаем оба exe в одной папке (служба ищет Praktika.exe рядом).
 if(CMAKE_CONFIGURATION_TYPES)

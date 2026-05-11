@@ -14,10 +14,14 @@
 #include <vector>
 #include <thread>
 
+#include <commdlg.h>
+#include <shlobj.h>
+
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "Comdlg32.lib")
 
 // ---- Dark Theme Colors ----
 static constexpr COLORREF CLR_BG        = RGB(24, 24, 36);    // main background
@@ -65,6 +69,9 @@ enum CommandIds : UINT_PTR {
   
   ID_LOGOUT_BTN,
   
+  ID_SCAN_FILE_BTN,
+  ID_SCAN_DIR_BTN,
+  
   ID_TIMER_POLL = 1
 };
 
@@ -109,6 +116,12 @@ HWND g_hStatusLbl = nullptr;
 HWND g_hMainUserLbl = nullptr;
 HWND g_hLicLbl = nullptr;
 HWND g_hLogoutBtn = nullptr;
+
+// AV Scan Controls
+HWND g_hAvDbLbl = nullptr;
+HWND g_hScanFilBtn = nullptr;
+HWND g_hScanDirBtn = nullptr;
+HWND g_hScanResult = nullptr;
 
 std::wstring g_currentUser;
 std::wstring g_currentExpiry;
@@ -220,6 +233,10 @@ void UpdateUI(HWND hwnd) {
   ShowWindow(g_hMainUserLbl, isMain ? SW_SHOW : SW_HIDE);
   ShowWindow(g_hLicLbl, isMain ? SW_SHOW : SW_HIDE);
   ShowWindow(g_hLogoutBtn, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hAvDbLbl, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hScanFilBtn, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hScanDirBtn, isMain ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hScanResult, isMain ? SW_SHOW : SW_HIDE);
 
   if (isMain) {
     SetWindowTextW(g_hMainUserLbl, (L"Пользователь: " + g_currentUser).c_str());
@@ -229,6 +246,16 @@ void UpdateUI(HWND hwnd) {
     } else {
       SetWindowTextW(g_hStatusLbl, L"Антивирус: ЗАБЛОКИРОВАН (нет лицензии)");
       SetWindowTextW(g_hLicLbl, L"Лицензия отсутствует");
+    }
+    // АВ-базы: запрашиваем информацию (п.GUI.1)
+    bool dbLoaded = false; long dbCount = 0; std::wstring dbDate;
+    Praktika_RpcGetAvDbInfo(dbLoaded, dbCount, dbDate);
+    if (dbLoaded) {
+      wchar_t buf[128]{};
+      _snwprintf_s(buf, _TRUNCATE, L"Базы: %ls  |  Записей: %ld", dbDate.c_str(), dbCount);
+      SetWindowTextW(g_hAvDbLbl, buf);
+    } else {
+      SetWindowTextW(g_hAvDbLbl, L"АВ-базы не загружены");
     }
   }
 
@@ -342,6 +369,74 @@ void OnLogoutClick(HWND hwnd) {
   }).detach();
 }
 
+// --- АВ-сканирование: выбор файла (п.GUI.2) ---
+void OnScanFileClick(HWND hwnd) {
+  wchar_t path[MAX_PATH]{};
+  OPENFILENAMEW ofn{};
+  ofn.lStructSize = sizeof(ofn);
+  ofn.hwndOwner = hwnd;
+  ofn.lpstrFilter = L"Все файлы\0*.*\0Исполняемые\0*.exe;*.dll;*.ps1;*.py\0";
+  ofn.lpstrFile = path;
+  ofn.nMaxFile = MAX_PATH;
+  ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+  if (!GetOpenFileNameW(&ofn)) return;
+
+  SetWindowTextW(g_hScanResult, L"Сканирование...");
+  EnableWindow(g_hScanFilBtn, FALSE);
+  EnableWindow(g_hScanDirBtn, FALSE);
+
+  std::wstring filePath(path);
+  std::thread([hwnd, filePath]() {
+    bool isThreat = false;
+    std::wstring threatName;
+    Praktika_RpcScanFile(filePath.c_str(), isThreat, threatName);
+    std::wstring msg;
+    if (isThreat) {
+      msg = L"\xD83D\xDED1 УГРОЗА: " + threatName + L"\n" + filePath;
+    } else {
+      msg = L"\u2705 Файл чист: " + filePath.substr(filePath.rfind(L'\\') + 1);
+    }
+    // Post result back to UI
+    auto* pMsg = new std::wstring(msg);
+    PostMessageW(hwnd, WM_APP_STATE_UPDATED, 3, (LPARAM)pMsg);
+  }).detach();
+}
+
+// --- АВ-сканирование: выбор директории (п.GUI.3) ---
+void OnScanDirClick(HWND hwnd) {
+  wchar_t path[MAX_PATH]{};
+  BROWSEINFOW bi{};
+  bi.hwndOwner = hwnd;
+  bi.lpszTitle = L"Выберите папку для сканирования";
+  bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+  LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+  if (!pidl) return;
+  SHGetPathFromIDListW(pidl, path);
+  CoTaskMemFree(pidl);
+
+  SetWindowTextW(g_hScanResult, L"Сканирование папки...");
+  EnableWindow(g_hScanFilBtn, FALSE);
+  EnableWindow(g_hScanDirBtn, FALSE);
+
+  std::wstring dirPath(path);
+  std::thread([hwnd, dirPath]() {
+    long total = 0, scanned = 0, threats = 0;
+    std::wstring threatList;
+    Praktika_RpcScanDir(dirPath.c_str(), total, scanned, threats, threatList);
+    wchar_t buf[256]{};
+    _snwprintf_s(buf, _TRUNCATE, L"Файлов: %ld | Просканировано: %ld | Угроз: %ld",
+                 total, scanned, threats);
+    std::wstring msg = buf;
+    if (threats > 0) {
+      msg += L"\n\xD83D\xDED1 " + threatList;
+    } else {
+      msg += L"\n\u2705 Угрозы не обнаружены";
+    }
+    auto* pMsg = new std::wstring(msg);
+    PostMessageW(hwnd, WM_APP_STATE_UPDATED, 3, (LPARAM)pMsg);
+  }).detach();
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   if (msg == g_msgTaskbarCreated) {
     AddTrayIcon(hwnd);
@@ -394,15 +489,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     g_hLicLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 155, 340, 22, hwnd, nullptr, hInst, nullptr);
     g_hLogoutBtn = CreateWindowExW(0, L"BUTTON", L"Выйти из аккаунта", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 30, 200, 340, 38, hwnd, (HMENU)ID_LOGOUT_BTN, hInst, nullptr);
     
+    // --- AV Scan Controls ---
+    g_hAvDbLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 250, 340, 20, hwnd, nullptr, hInst, nullptr);
+    g_hScanFilBtn = CreateWindowExW(0, L"BUTTON", L"\xD83D\xDD0D  Сканировать файл", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 30, 280, 165, 34, hwnd, (HMENU)ID_SCAN_FILE_BTN, hInst, nullptr);
+    g_hScanDirBtn = CreateWindowExW(0, L"BUTTON", L"\xD83D\xDCC1  Сканировать папку", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 205, 280, 165, 34, hwnd, (HMENU)ID_SCAN_DIR_BTN, hInst, nullptr);
+    g_hScanResult = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 325, 340, 65, hwnd, nullptr, hInst, nullptr);
+    
     // Apply fonts: titles get big font, rest get UI font
     SendMessageW(g_hAuthTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
     SendMessageW(g_hActTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
     SendMessageW(g_hMainTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
     HWND allCtrls[] = { g_hUserLbl, g_hUserEdit, g_hPassLbl, g_hPassEdit,
       g_hLoginBtn, g_hAuthErr, g_hCodeLbl, g_hCodeEdit, g_hActBtn, g_hActErr,
-      g_hStatusLbl, g_hMainUserLbl, g_hLicLbl, g_hLogoutBtn };
+      g_hStatusLbl, g_hMainUserLbl, g_hLicLbl, g_hLogoutBtn,
+      g_hAvDbLbl, g_hScanFilBtn, g_hScanDirBtn };
     for (HWND h : allCtrls)
       SendMessageW(h, WM_SETFONT, (WPARAM)g_hFontUI, TRUE);
+    SendMessageW(g_hScanResult, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE);
     
     SetTimer(hwnd, ID_TIMER_POLL, 5000, nullptr);
     CheckStateAsync(hwnd);
@@ -422,6 +525,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       // Activation failed
       EnableWindow(g_hActBtn, TRUE);
       SetWindowTextW(g_hActErr, L"Ошибка активации. Проверьте код.");
+    } else if (wParam == 3) {
+      // Scan result
+      auto* pMsg = reinterpret_cast<std::wstring*>(lParam);
+      if (pMsg) {
+        SetWindowTextW(g_hScanResult, pMsg->c_str());
+        delete pMsg;
+      }
+      EnableWindow(g_hScanFilBtn, TRUE);
+      EnableWindow(g_hScanDirBtn, TRUE);
     } else {
       // Normal state update
       ApplyAsyncState(hwnd);
@@ -442,6 +554,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       OnActivateClick(hwnd);
     } else if (id == ID_LOGOUT_BTN) {
       OnLogoutClick(hwnd);
+    } else if (id == ID_SCAN_FILE_BTN) {
+      OnScanFileClick(hwnd);
+    } else if (id == ID_SCAN_DIR_BTN) {
+      OnScanDirClick(hwnd);
     }
     return 0;
   }
@@ -578,7 +694,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
 
   HWND main = CreateWindowExW(0, kWindowClass, kWindowTitle,
                               WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                              420, 360, nullptr, nullptr, hInstance, nullptr);
+                              420, 470, nullptr, nullptr, hInstance, nullptr);
   if (!main) {
     if (g_singletonMutex) {
       CloseHandle(g_singletonMutex);

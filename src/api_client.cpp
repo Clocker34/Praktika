@@ -99,3 +99,53 @@ long Praktika_RpcActivateProduct(const wchar_t* activationCode) {
   } RpcEndExcept
   return result;
 }
+
+long Praktika_RpcGetAvDbInfo(bool& loaded, long& recordCount, std::wstring& releaseDate) {
+  if (EnsureBinding() != RPC_S_OK) return CYCL_SERVER_ERROR;
+  long isLoaded = 0, count = 0;
+  wchar_t buf[64]{};
+  long result = CYCL_SERVER_ERROR;
+  RpcTryExcept {
+    result = GetAvDbInfo(g_apiBinding, &isLoaded, &count, 64, buf);
+  } RpcExcept(EXCEPTION_EXECUTE_HANDLER) {
+    return CYCL_SERVER_ERROR;
+  } RpcEndExcept
+  loaded = (isLoaded != 0);
+  recordCount = count;
+  releaseDate = buf;
+  return result;
+}
+
+long Praktika_RpcScanFile(const wchar_t* filePath, bool& isThreat, std::wstring& threatName) {
+  if (EnsureBinding() != RPC_S_OK) return CYCL_SERVER_ERROR;
+  long threat = 0;
+  wchar_t buf[256]{};
+  long result = CYCL_SERVER_ERROR;
+  RpcTryExcept {
+    result = ScanFilePath(g_apiBinding, filePath, &threat, 256, buf);
+  } RpcExcept(EXCEPTION_EXECUTE_HANDLER) {
+    return CYCL_SERVER_ERROR;
+  } RpcEndExcept
+  isThreat = (threat != 0);
+  threatName = buf;
+  return result;
+}
+
+long Praktika_RpcScanDir(const wchar_t* dirPath, long& totalFiles,
+                         long& scannedFiles, long& threatsFound,
+                         std::wstring& threatList) {
+  if (EnsureBinding() != RPC_S_OK) return CYCL_SERVER_ERROR;
+  long total = 0, scanned = 0, threats = 0;
+  wchar_t buf[8192]{};
+  long result = CYCL_SERVER_ERROR;
+  RpcTryExcept {
+    result = ScanDirPath(g_apiBinding, dirPath, &total, &scanned, &threats, 8192, buf);
+  } RpcExcept(EXCEPTION_EXECUTE_HANDLER) {
+    return CYCL_SERVER_ERROR;
+  } RpcEndExcept
+  totalFiles = total;
+  scannedFiles = scanned;
+  threatsFound = threats;
+  threatList = buf;
+  return result;
+}
