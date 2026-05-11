@@ -1,0 +1,10 @@
+{
+  "files.encoding": "utf8",
+  "C_Cpp.default.cppStandard": "c++17",
+  "cmake.buildDirectory": "${sourceDir}/build",
+  "cmake.configureOnOpen": true,
+  "cmake.generator": "Visual Studio 17 2022",
+  "cmake.configureSettings": {
+    "CMAKE_EXPORT_COMPILE_COMMANDS": true
+  }
+}
