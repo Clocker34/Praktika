@@ -1,6 +1,7 @@
 // HTTP-клиент: WinHTTP (задание 3).
 // Используется только службой; GUI не делает HTTP-запросов напрямую.
 #include "http_client.h"
+#include "../app_config.h"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -32,6 +33,9 @@ HttpResponse DoRequest(const wchar_t* method, const wchar_t* host, int port,
                                    WINHTTP_NO_PROXY_BYPASS, 0);
   if (!hSession) return resp;
 
+  // Таймауты: 5 секунд на каждую фазу (resolve, connect, send, receive).
+  WinHttpSetTimeouts(hSession, 5000, 5000, 5000, 5000);
+
   HINTERNET hConnect = WinHttpConnect(hSession, host,
                                       static_cast<INTERNET_PORT>(port), 0);
   if (!hConnect) {
@@ -39,16 +43,23 @@ HttpResponse DoRequest(const wchar_t* method, const wchar_t* host, int port,
     return resp;
   }
 
+  // HTTPS или HTTP в зависимости от конфигурации.
+  DWORD reqFlags = 0;
+#if PRAKTIKA_API_USE_TLS
+  reqFlags = WINHTTP_FLAG_SECURE;
+#endif
+
   HINTERNET hRequest = WinHttpOpenRequest(
       hConnect, method, path, nullptr, WINHTTP_NO_REFERER,
       WINHTTP_DEFAULT_ACCEPT_TYPES,
-      WINHTTP_FLAG_SECURE);
+      reqFlags);
   if (!hRequest) {
     WinHttpCloseHandle(hConnect);
     WinHttpCloseHandle(hSession);
     return resp;
   }
 
+#if PRAKTIKA_API_USE_TLS
   // Для учебного проекта: игнорируем ошибки TLS-сертификата
   // (позволяет работать с самоподписанными сертификатами).
   DWORD flags = SECURITY_FLAG_IGNORE_UNKNOWN_CA |
@@ -57,6 +68,7 @@ HttpResponse DoRequest(const wchar_t* method, const wchar_t* host, int port,
                 SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
   WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &flags,
                    sizeof(flags));
+#endif
 
   // Заголовки.
   std::wstring headers = L"Content-Type: application/json\r\n";

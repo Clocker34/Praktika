@@ -7,9 +7,14 @@
 #include "json_parser.h"
 #include "../app_config.h"
 
+#include <winsock2.h>
 #include <windows.h>
+#include <iphlpapi.h>
 #include <string>
 #include <mutex>
+#include <vector>
+
+#pragma comment(lib, "Iphlpapi.lib")
 
 namespace license {
 
@@ -20,8 +25,13 @@ std::mutex g_mu;
 // Лицензионный тикет — только в памяти (п.9).
 std::string g_ticket;         // полный JSON тикета
 bool g_isLicensed = false;
-std::wstring g_expiryDate;    // "YYYY-MM-DD HH:MM:SS"
-long long g_expiryUnix = 0;   // Unix timestamp истечения
+std::wstring g_expiryDate;    // "YYYY-MM-DD"
+long long g_ticketLifetime = 0;  // ticketLifetimeSeconds из тикета
+
+// Код лицензии, MAC-адрес и имя устройства сохраняются для повторных check.
+std::string g_licenseCode;
+std::string g_macAddress;
+std::string g_deviceName;
 
 HANDLE g_refreshThread = nullptr;
 HANDLE g_stopEvent = nullptr;
@@ -47,40 +57,91 @@ std::string WideToUtf8(const std::wstring& w) {
   return s;
 }
 
-// Парсинг тикета: извлекаем isLicensed и expiryDate.
-void ParseTicket(const std::string& ticketJson) {
-  g_ticket = ticketJson;
+// Получить первый MAC-адрес активного адаптера (физический).
+std::string GetPhysicalMacAddress() {
+  ULONG bufLen = 0;
+  GetAdaptersAddresses(AF_INET, 0, nullptr, nullptr, &bufLen);
+  if (bufLen == 0) return "00:00:00:00:00:00";
 
-  // Ожидаемый формат ответа:
-  // { "licensed": true, "expiry": "2025-12-31 23:59:59", "expiry_unix": 1767225599, ... }
-  g_isLicensed = json::JsonBool(ticketJson, "licensed");
+  std::vector<BYTE> buf(bufLen);
+  auto* addrs = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buf.data());
+  if (GetAdaptersAddresses(AF_INET, 0, nullptr, addrs, &bufLen) != NO_ERROR)
+    return "00:00:00:00:00:00";
 
-  const std::string expiry = json::JsonString(ticketJson, "expiry");
+  for (auto* a = addrs; a; a = a->Next) {
+    if (a->PhysicalAddressLength == 6 && a->OperStatus == IfOperStatusUp) {
+      char mac[18];
+      sprintf_s(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+                (unsigned)a->PhysicalAddress[0], (unsigned)a->PhysicalAddress[1],
+                (unsigned)a->PhysicalAddress[2], (unsigned)a->PhysicalAddress[3],
+                (unsigned)a->PhysicalAddress[4], (unsigned)a->PhysicalAddress[5]);
+      return mac;
+    }
+  }
+  return "00:00:00:00:00:00";
+}
+
+// Генерация виртуального MAC-адреса на основе userId + hostname.
+// Позволяет нескольким пользователям активировать лицензию на одном ПК
+// (как в Steam), потому что каждый userId получает свой уникальный "device".
+std::string MakeVirtualMac(const std::string& userId) {
+  char host[MAX_COMPUTERNAME_LENGTH + 1]{};
+  DWORD sz = sizeof(host);
+  GetComputerNameA(host, &sz);
+
+  // Simple hash: FNV-1a over userId + hostname
+  std::string seed = userId + ":" + host;
+  unsigned long long h = 14695981039346656037ULL;
+  for (char c : seed) {
+    h ^= static_cast<unsigned char>(c);
+    h *= 1099511628211ULL;
+  }
+  // Build MAC from hash bytes (locally administered, unicast: bit 1 set, bit 0 clear)
+  unsigned char mac[6];
+  for (int i = 0; i < 6; ++i)
+    mac[i] = static_cast<unsigned char>((h >> (i * 8)) & 0xFF);
+  mac[0] = (mac[0] | 0x02) & 0xFE;  // locally administered, unicast
+
+  char buf[18];
+  sprintf_s(buf, "%02X:%02X:%02X:%02X:%02X:%02X",
+            (unsigned)mac[0], (unsigned)mac[1], (unsigned)mac[2],
+            (unsigned)mac[3], (unsigned)mac[4], (unsigned)mac[5]);
+  return buf;
+}
+
+// Получить имя компьютера.
+std::string GetMachineName() {
+  char buf[MAX_COMPUTERNAME_LENGTH + 1]{};
+  DWORD sz = sizeof(buf);
+  if (GetComputerNameA(buf, &sz)) return buf;
+  return "Unknown";
+}
+
+// Парсинг тикета из TicketResponse JSON.
+// Формат: { "ticket": { "licenseExpirationDate": "2025-12-31",
+//   "licenseBlocked": false, "ticketLifetimeSeconds": 300, ... },
+//   "signatureBase64": "..." }
+void ParseTicket(const std::string& responseJson) {
+  g_ticket = responseJson;
+
+  // Вложенный объект "ticket" — упрощённый парсинг.
+  // Проверяем licenseBlocked и licenseExpirationDate.
+  const std::string blocked = json::JsonString(responseJson, "licenseBlocked");
+  g_isLicensed = (blocked != "true");
+
+  const std::string expiry = json::JsonString(responseJson, "licenseExpirationDate");
   g_expiryDate = Utf8ToWide(expiry);
 
-  g_expiryUnix = json::JsonInt(ticketJson, "expiry_unix");
+  g_ticketLifetime = json::JsonInt(responseJson, "ticketLifetimeSeconds");
 }
 
 // Рассчитать задержку обновления тикета (п.5).
-// Обновляем за 10% до истечения, но не реже чем раз в час.
 DWORD CalcRefreshDelay() {
-  if (g_expiryUnix <= 0) return 3600000;  // 1 час по умолчанию
-
-  FILETIME ft;
-  GetSystemTimeAsFileTime(&ft);
-  ULARGE_INTEGER now;
-  now.LowPart = ft.dwLowDateTime;
-  now.HighPart = ft.dwHighDateTime;
-  const long long nowSec =
-      static_cast<long long>(now.QuadPart / 10000000ULL - 11644473600ULL);
-
-  long long remaining = g_expiryUnix - nowSec;
-  if (remaining <= 0) return 60000;  // истёк — проверить через минуту
-
-  long long delay = remaining / 10;  // 10% от оставшегося
-  if (delay < 60) delay = 60;
-  if (delay > 3600) delay = 3600;
-
+  if (g_ticketLifetime <= 0) return 60000;  // 1 мин по умолчанию
+  // Обновляем за 10% до истечения, но не менее 30 с и не более 5 мин.
+  long long delay = g_ticketLifetime * 9 / 10;
+  if (delay < 30) delay = 30;
+  if (delay > 300) delay = 300;
   return static_cast<DWORD>(delay * 1000);
 }
 
@@ -100,15 +161,29 @@ DWORD WINAPI RefreshThread(LPVOID) {
     const DWORD w = WaitForSingleObject(g_stopEvent, delay);
     if (w == WAIT_OBJECT_0) break;
 
-    // Пропускаем обновление, если нет аутентификации.
+    // Пропускаем обновление, если нет аутентификации или нет кода лицензии.
     if (!auth::IsAuthenticated()) continue;
+    
+    std::string code, mac;
+    {
+      std::lock_guard<std::mutex> lk(g_mu);
+      code = g_licenseCode;
+      mac = g_macAddress;
+    }
+    if (code.empty()) continue;
 
-    // Обновляем тикет.
+    // Отправляем POST /api/licenses/check.
     const std::string token = auth::GetAccessToken();
     if (token.empty()) continue;
 
-    HttpResponse resp = HttpGet(PRAKTIKA_API_HOST, PRAKTIKA_API_PORT,
-                                PRAKTIKA_API_LICENSE, token);
+    std::string body = "{\"licenseCode\":\"";
+    body += code;
+    body += "\",\"macAddress\":\"";
+    body += mac;
+    body += "\"}";
+
+    HttpResponse resp = HttpPostJson(PRAKTIKA_API_HOST, PRAKTIKA_API_PORT,
+                                     PRAKTIKA_API_LICENSE, body, token);
     if (resp.ok()) {
       std::lock_guard<std::mutex> lk(g_mu);
       ParseTicket(resp.body);
@@ -145,8 +220,22 @@ long FetchLicenseStatus() {
   const std::string token = auth::GetAccessToken();
   if (token.empty()) return CYCL_NOT_AUTHENTICATED;
 
-  HttpResponse resp = HttpGet(PRAKTIKA_API_HOST, PRAKTIKA_API_PORT,
-                              PRAKTIKA_API_LICENSE, token);
+  std::string code, mac;
+  {
+    std::lock_guard<std::mutex> lk(g_mu);
+    code = g_licenseCode;
+    mac = g_macAddress;
+  }
+  if (code.empty()) return CYCL_NO_LICENSE;
+
+  std::string body = "{\"licenseCode\":\"";
+  body += code;
+  body += "\",\"macAddress\":\"";
+  body += mac;
+  body += "\"}";
+
+  HttpResponse resp = HttpPostJson(PRAKTIKA_API_HOST, PRAKTIKA_API_PORT,
+                                   PRAKTIKA_API_LICENSE, body, token);
   if (!resp.ok()) {
     return (resp.statusCode == 401) ? CYCL_NOT_AUTHENTICATED : CYCL_HTTP_ERROR;
   }
@@ -162,19 +251,48 @@ long Activate(const wchar_t* activationCode) {
   const std::string token = auth::GetAccessToken();
   if (token.empty()) return CYCL_NOT_AUTHENTICATED;
 
-  std::string body = "{\"activation_code\":\"";
-  body += WideToUtf8(activationCode);
+  // Получаем userId из JWT-токена (claim "uid").
+  const std::string userId = jwt::GetClaim(token, "uid");
+
+  // Виртуальный MAC: уникален для пары (userId, hostname).
+  // Позволяет нескольким пользователям активировать на одном ПК.
+  const std::string mac = MakeVirtualMac(userId);
+  const std::string devName = GetMachineName();
+
+  std::string codeUtf8 = WideToUtf8(activationCode);
+
+  // POST /api/licenses/activate
+  // { "licenseCode": "...", "macAddress": "...", "deviceName": "...", "userId": "..." }
+  std::string body = "{\"licenseCode\":\"";
+  body += codeUtf8;
+  body += "\",\"macAddress\":\"";
+  body += mac;
+  body += "\",\"deviceName\":\"";
+  body += devName;
+  if (!userId.empty()) {
+    body += "\",\"userId\":\"";
+    body += userId;
+  }
   body += "\"}";
 
   HttpResponse resp = HttpPostJson(PRAKTIKA_API_HOST, PRAKTIKA_API_PORT,
                                    PRAKTIKA_API_ACTIVATE, body, token);
+
   if (!resp.ok()) {
     return CYCL_ACTIVATION_FAILED;
   }
 
-  // П.6: если эндпоинт вернул тикет — используем его.
-  const std::string licensed = json::JsonString(resp.body, "licensed");
-  if (!licensed.empty()) {
+  // Сохраняем код лицензии и MAC для повторных check.
+  {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_licenseCode = codeUtf8;
+    g_macAddress = mac;
+    g_deviceName = devName;
+  }
+
+  // Если эндпоинт активации вернул тикет — используем его (п.6).
+  const std::string expiryCheck = json::JsonString(resp.body, "licenseExpirationDate");
+  if (!expiryCheck.empty()) {
     std::lock_guard<std::mutex> lk(g_mu);
     ParseTicket(resp.body);
     return g_isLicensed ? CYCL_OK : CYCL_ACTIVATION_FAILED;
@@ -191,7 +309,10 @@ void ClearTicket() {
   g_ticket.clear();
   g_isLicensed = false;
   g_expiryDate.clear();
-  g_expiryUnix = 0;
+  g_ticketLifetime = 0;
+  g_licenseCode.clear();
+  g_macAddress.clear();
+  g_deviceName.clear();
 }
 
 bool IsLicensed() {

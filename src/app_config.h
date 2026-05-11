@@ -14,17 +14,18 @@
 
 // ---- Задание 3: API endpoints ----
 
-// Базовый URL Web-сервиса (HTTPS).
-#define PRAKTIKA_API_HOST     L"api.praktika-av.local"
-#define PRAKTIKA_API_PORT     443
+// Базовый URL Web-сервиса (Spring Boot, HTTP).
+#define PRAKTIKA_API_HOST     L"localhost"
+#define PRAKTIKA_API_PORT     8082
+#define PRAKTIKA_API_USE_TLS  0   // 0 = HTTP, 1 = HTTPS
 
-// Эндпоинты аутентификации.
-#define PRAKTIKA_API_LOGIN    L"/api/v1/auth/login"
-#define PRAKTIKA_API_REFRESH  L"/api/v1/auth/refresh"
+// Эндпоинты аутентификации (AuthJwtController).
+#define PRAKTIKA_API_LOGIN    L"/auth/login"
+#define PRAKTIKA_API_REFRESH  L"/auth/refresh"
 
-// Эндпоинты лицензирования.
-#define PRAKTIKA_API_LICENSE  L"/api/v1/license/status"
-#define PRAKTIKA_API_ACTIVATE L"/api/v1/license/activate"
+// Эндпоинты лицензирования (LicenseController).
+#define PRAKTIKA_API_LICENSE  L"/api/licenses/check"
+#define PRAKTIKA_API_ACTIVATE L"/api/licenses/activate"
 
 // RPC-эндпоинт для Praktika_Api (задание 3 п.10).
 #define PRAKTIKA_RPC_API_ENDPOINT L"PraktikaSvcApi"

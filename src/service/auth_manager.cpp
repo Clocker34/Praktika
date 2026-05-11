@@ -73,7 +73,7 @@ bool DoRefresh() {
   }
 
   // POST /api/v1/auth/refresh с refresh-токеном в Bearer.
-  std::string body = "{\"refresh_token\":\"";
+  std::string body = "{\"refreshToken\":\"";
   body += refresh;
   body += "\"}";
 
@@ -81,8 +81,8 @@ bool DoRefresh() {
                                    PRAKTIKA_API_REFRESH, body, refresh);
   if (!resp.ok()) return false;
 
-  const std::string newAccess = json::JsonString(resp.body, "access_token");
-  const std::string newRefresh = json::JsonString(resp.body, "refresh_token");
+  const std::string newAccess = json::JsonString(resp.body, "accessToken");
+  const std::string newRefresh = json::JsonString(resp.body, "refreshToken");
 
   if (newAccess.empty()) return false;
 
@@ -176,8 +176,8 @@ long Login(const wchar_t* username, const wchar_t* password) {
     return CYCL_AUTH_FAILED;
   }
 
-  const std::string access = json::JsonString(resp.body, "access_token");
-  const std::string refresh = json::JsonString(resp.body, "refresh_token");
+  const std::string access = json::JsonString(resp.body, "accessToken");
+  const std::string refresh = json::JsonString(resp.body, "refreshToken");
 
   if (access.empty()) {
     return CYCL_AUTH_FAILED;
