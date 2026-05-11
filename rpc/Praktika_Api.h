@@ -8,7 +8,7 @@
  */
 /* Compiler settings for Praktika_Api.idl:
     Oicf, W1, Zp8, env=Win64 (32b run), target_arch=AMD64 8.01.0628 
-    protocol : all , ms_ext, c_ext, robust
+    protocol : dce , ms_ext, c_ext, robust
     error checks: allocation ref bounds_check enum stub_data 
     VC __declspec() decoration level: 
          __declspec(uuid()), __declspec(selectany), __declspec(novtable)
@@ -81,6 +81,29 @@ long GetLicenseInfo(
 long ActivateProduct( 
     /* [in] */ handle_t hBinding,
     /* [string][in] */ const wchar_t *activationCode);
+
+long GetAvDbInfo( 
+    /* [in] */ handle_t hBinding,
+    /* [out] */ long *pLoaded,
+    /* [out] */ long *pRecordCount,
+    /* [in] */ long dateBufLen,
+    /* [size_is][out] */ wchar_t releaseDate[  ]);
+
+long ScanFilePath( 
+    /* [in] */ handle_t hBinding,
+    /* [string][in] */ const wchar_t *filePath,
+    /* [out] */ long *pIsThreat,
+    /* [in] */ long nameBufLen,
+    /* [size_is][out] */ wchar_t threatName[  ]);
+
+long ScanDirPath( 
+    /* [in] */ handle_t hBinding,
+    /* [string][in] */ const wchar_t *dirPath,
+    /* [out] */ long *pTotalFiles,
+    /* [out] */ long *pScannedFiles,
+    /* [out] */ long *pThreatsFound,
+    /* [in] */ long listBufLen,
+    /* [size_is][out] */ wchar_t threatList[  ]);
 
 
 

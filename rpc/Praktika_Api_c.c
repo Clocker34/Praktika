@@ -8,7 +8,7 @@
  */
 /* Compiler settings for Praktika_Api.idl:
     Oicf, W1, Zp8, env=Win64 (32b run), target_arch=AMD64 8.01.0628 
-    protocol : all , ms_ext, c_ext, robust
+    protocol : dce , ms_ext, c_ext, robust
     error checks: allocation ref bounds_check enum stub_data 
     VC __declspec() decoration level: 
          __declspec(uuid()), __declspec(selectany), __declspec(novtable)
@@ -26,13 +26,16 @@
 #pragma warning( disable: 4211 )  /* redefine extern to static */
 #pragma warning( disable: 4232 )  /* dllimport identity*/
 #pragma warning( disable: 4024 )  /* array to pointer mapping*/
+#pragma warning( disable: 4100 ) /* unreferenced arguments in x86 call */
+
+#pragma optimize("", off ) 
 
 #include <string.h>
 
 #include "Praktika_Api.h"
 
-#define TYPE_FORMAT_STRING_SIZE   35                                
-#define PROC_FORMAT_STRING_SIZE   229                               
+#define TYPE_FORMAT_STRING_SIZE   59                                
+#define PROC_FORMAT_STRING_SIZE   421                               
 #define EXPR_FORMAT_STRING_SIZE   1                                 
 #define TRANSMIT_AS_TABLE_SIZE    0            
 #define WIRE_MARSHAL_TABLE_SIZE   0            
@@ -58,9 +61,6 @@ typedef struct _Praktika_Api_MIDL_EXPR_FORMAT_STRING
 
 static const RPC_SYNTAX_IDENTIFIER  _RpcTransferSyntax_2_0 = 
 {{0x8A885D04,0x1CEB,0x11C9,{0x9F,0xE8,0x08,0x00,0x2B,0x10,0x48,0x60}},{2,0}};
-
-static const RPC_SYNTAX_IDENTIFIER  _NDR64_RpcTransferSyntax_1_0 = 
-{{0x71710533,0xbeba,0x4937,{0x83,0x19,0xb5,0xdb,0xef,0x9c,0xcc,0x36}},{1,0}};
 
 #if defined(_CONTROL_FLOW_GUARD_XFG)
 #define XFG_TRAMPOLINES(ObjectType)\
@@ -117,7 +117,6 @@ ObjectType ## _unbind((ObjectType) pObject, ServerHandle);\
 #endif
 
 
-
 extern const Praktika_Api_MIDL_TYPE_FORMAT_STRING Praktika_Api__MIDL_TypeFormatString;
 extern const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatString;
 extern const Praktika_Api_MIDL_EXPR_FORMAT_STRING Praktika_Api__MIDL_ExprFormatString;
@@ -128,7 +127,6 @@ extern const Praktika_Api_MIDL_EXPR_FORMAT_STRING Praktika_Api__MIDL_ExprFormatS
 /* Standard interface: Praktika_Api, ver. 1.0,
    GUID={0xa1b2c3d4,0xe5f6,0x4a7b,{0x8c,0x9d,0x0e,0x1f,0x2a,0x3b,0x4c,0x5d}} */
 
- extern const MIDL_STUBLESS_PROXY_INFO Praktika_Api_ProxyInfo;
 
 static const RPC_PROTSEQ_ENDPOINT __RpcProtseqEndpoint[] = 
     {
@@ -145,8 +143,8 @@ static const RPC_CLIENT_INTERFACE Praktika_Api___RpcClientInterface =
     1,
     (RPC_PROTSEQ_ENDPOINT *)__RpcProtseqEndpoint,
     0,
-    &Praktika_Api_ProxyInfo,
-    0x02000000
+    0,
+    0x00000000
     };
 RPC_IF_HANDLE Praktika_Api_v1_0_c_ifspec = (RPC_IF_HANDLE)& Praktika_Api___RpcClientInterface;
 #ifdef __cplusplus
@@ -169,10 +167,9 @@ long GetAuthInfo(
 
     CLIENT_CALL_RETURN _RetVal;
 
-    _RetVal = NdrClientCall3(
-                  ( PMIDL_STUBLESS_PROXY_INFO  )&Praktika_Api_ProxyInfo,
-                  0,
-                  0,
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[0],
                   hBinding,
                   bufLen,
                   username);
@@ -189,10 +186,9 @@ long Login(
 
     CLIENT_CALL_RETURN _RetVal;
 
-    _RetVal = NdrClientCall3(
-                  ( PMIDL_STUBLESS_PROXY_INFO  )&Praktika_Api_ProxyInfo,
-                  1,
-                  0,
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[48],
                   hBinding,
                   username,
                   password);
@@ -207,10 +203,9 @@ long Logout(
 
     CLIENT_CALL_RETURN _RetVal;
 
-    _RetVal = NdrClientCall3(
-                  ( PMIDL_STUBLESS_PROXY_INFO  )&Praktika_Api_ProxyInfo,
-                  2,
-                  0,
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[96],
                   hBinding);
     return ( long  )_RetVal.Simple;
     
@@ -226,10 +221,9 @@ long GetLicenseInfo(
 
     CLIENT_CALL_RETURN _RetVal;
 
-    _RetVal = NdrClientCall3(
-                  ( PMIDL_STUBLESS_PROXY_INFO  )&Praktika_Api_ProxyInfo,
-                  3,
-                  0,
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[132],
                   hBinding,
                   pIsLicensed,
                   expiryBufLen,
@@ -246,12 +240,84 @@ long ActivateProduct(
 
     CLIENT_CALL_RETURN _RetVal;
 
-    _RetVal = NdrClientCall3(
-                  ( PMIDL_STUBLESS_PROXY_INFO  )&Praktika_Api_ProxyInfo,
-                  4,
-                  0,
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[186],
                   hBinding,
                   activationCode);
+    return ( long  )_RetVal.Simple;
+    
+}
+
+
+long GetAvDbInfo( 
+    /* [in] */ handle_t hBinding,
+    /* [out] */ long *pLoaded,
+    /* [out] */ long *pRecordCount,
+    /* [in] */ long dateBufLen,
+    /* [size_is][out] */ wchar_t releaseDate[  ])
+{
+
+    CLIENT_CALL_RETURN _RetVal;
+
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[228],
+                  hBinding,
+                  pLoaded,
+                  pRecordCount,
+                  dateBufLen,
+                  releaseDate);
+    return ( long  )_RetVal.Simple;
+    
+}
+
+
+long ScanFilePath( 
+    /* [in] */ handle_t hBinding,
+    /* [string][in] */ const wchar_t *filePath,
+    /* [out] */ long *pIsThreat,
+    /* [in] */ long nameBufLen,
+    /* [size_is][out] */ wchar_t threatName[  ])
+{
+
+    CLIENT_CALL_RETURN _RetVal;
+
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[288],
+                  hBinding,
+                  filePath,
+                  pIsThreat,
+                  nameBufLen,
+                  threatName);
+    return ( long  )_RetVal.Simple;
+    
+}
+
+
+long ScanDirPath( 
+    /* [in] */ handle_t hBinding,
+    /* [string][in] */ const wchar_t *dirPath,
+    /* [out] */ long *pTotalFiles,
+    /* [out] */ long *pScannedFiles,
+    /* [out] */ long *pThreatsFound,
+    /* [in] */ long listBufLen,
+    /* [size_is][out] */ wchar_t threatList[  ])
+{
+
+    CLIENT_CALL_RETURN _RetVal;
+
+    _RetVal = NdrClientCall2(
+                  ( PMIDL_STUB_DESC  )&Praktika_Api_StubDesc,
+                  (PFORMAT_STRING) &Praktika_Api__MIDL_ProcFormatString.Format[348],
+                  hBinding,
+                  dirPath,
+                  pTotalFiles,
+                  pScannedFiles,
+                  pThreatsFound,
+                  listBufLen,
+                  threatList);
     return ( long  )_RetVal.Simple;
     
 }
@@ -260,6 +326,13 @@ long ActivateProduct(
 #if !defined(__RPC_WIN64__)
 #error  Invalid build platform for this stub.
 #endif
+#if !(TARGET_IS_NT60_OR_LATER)
+#error You need Windows Vista or later to run this stub because it uses these features:
+#error   compiled for Windows Vista.
+#error However, your C/C++ compilation flags indicate you intend to run this app on earlier systems.
+#error This app will fail with the RPC_X_WRONG_STUB_VERSION error.
+#endif
+
 
 static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatString =
     {
@@ -272,10 +345,10 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 			0x48,		/* Old Flags:  */
 /*  2 */	NdrFcLong( 0x0 ),	/* 0 */
 /*  6 */	NdrFcShort( 0x0 ),	/* 0 */
-/*  8 */	NdrFcShort( 0x20 ),	/* X64 Stack size/offset = 32 */
+/*  8 */	NdrFcShort( 0x20 ),	/* x86 Stack size/offset = 32 */
 /* 10 */	0x32,		/* FC_BIND_PRIMITIVE */
 			0x0,		/* 0 */
-/* 12 */	NdrFcShort( 0x0 ),	/* X64 Stack size/offset = 0 */
+/* 12 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
 /* 14 */	NdrFcShort( 0x8 ),	/* 8 */
 /* 16 */	NdrFcShort( 0x8 ),	/* 8 */
 /* 18 */	0x45,		/* Oi2 Flags:  srv must size, has return, has ext, */
@@ -290,20 +363,20 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 	/* Parameter bufLen */
 
 /* 30 */	NdrFcShort( 0x48 ),	/* Flags:  in, base type, */
-/* 32 */	NdrFcShort( 0x8 ),	/* X64 Stack size/offset = 8 */
+/* 32 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
 /* 34 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
 	/* Parameter username */
 
 /* 36 */	NdrFcShort( 0x13 ),	/* Flags:  must size, must free, out, */
-/* 38 */	NdrFcShort( 0x10 ),	/* X64 Stack size/offset = 16 */
+/* 38 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
 /* 40 */	NdrFcShort( 0x2 ),	/* Type Offset=2 */
 
 	/* Return value */
 
 /* 42 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
-/* 44 */	NdrFcShort( 0x18 ),	/* X64 Stack size/offset = 24 */
+/* 44 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
 /* 46 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
@@ -313,10 +386,10 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 			0x48,		/* Old Flags:  */
 /* 50 */	NdrFcLong( 0x0 ),	/* 0 */
 /* 54 */	NdrFcShort( 0x1 ),	/* 1 */
-/* 56 */	NdrFcShort( 0x20 ),	/* X64 Stack size/offset = 32 */
+/* 56 */	NdrFcShort( 0x20 ),	/* x86 Stack size/offset = 32 */
 /* 58 */	0x32,		/* FC_BIND_PRIMITIVE */
 			0x0,		/* 0 */
-/* 60 */	NdrFcShort( 0x0 ),	/* X64 Stack size/offset = 0 */
+/* 60 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
 /* 62 */	NdrFcShort( 0x0 ),	/* 0 */
 /* 64 */	NdrFcShort( 0x8 ),	/* 8 */
 /* 66 */	0x46,		/* Oi2 Flags:  clt must size, has return, has ext, */
@@ -331,19 +404,19 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 	/* Parameter username */
 
 /* 78 */	NdrFcShort( 0x10b ),	/* Flags:  must size, must free, in, simple ref, */
-/* 80 */	NdrFcShort( 0x8 ),	/* X64 Stack size/offset = 8 */
+/* 80 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
 /* 82 */	NdrFcShort( 0x10 ),	/* Type Offset=16 */
 
 	/* Parameter password */
 
 /* 84 */	NdrFcShort( 0x10b ),	/* Flags:  must size, must free, in, simple ref, */
-/* 86 */	NdrFcShort( 0x10 ),	/* X64 Stack size/offset = 16 */
+/* 86 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
 /* 88 */	NdrFcShort( 0x10 ),	/* Type Offset=16 */
 
 	/* Return value */
 
 /* 90 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
-/* 92 */	NdrFcShort( 0x18 ),	/* X64 Stack size/offset = 24 */
+/* 92 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
 /* 94 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
@@ -353,10 +426,10 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 			0x48,		/* Old Flags:  */
 /* 98 */	NdrFcLong( 0x0 ),	/* 0 */
 /* 102 */	NdrFcShort( 0x2 ),	/* 2 */
-/* 104 */	NdrFcShort( 0x10 ),	/* X64 Stack size/offset = 16 */
+/* 104 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
 /* 106 */	0x32,		/* FC_BIND_PRIMITIVE */
 			0x0,		/* 0 */
-/* 108 */	NdrFcShort( 0x0 ),	/* X64 Stack size/offset = 0 */
+/* 108 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
 /* 110 */	NdrFcShort( 0x0 ),	/* 0 */
 /* 112 */	NdrFcShort( 0x8 ),	/* 8 */
 /* 114 */	0x44,		/* Oi2 Flags:  has return, has ext, */
@@ -371,7 +444,7 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 	/* Return value */
 
 /* 126 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
-/* 128 */	NdrFcShort( 0x8 ),	/* X64 Stack size/offset = 8 */
+/* 128 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
 /* 130 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
@@ -381,10 +454,10 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 			0x48,		/* Old Flags:  */
 /* 134 */	NdrFcLong( 0x0 ),	/* 0 */
 /* 138 */	NdrFcShort( 0x3 ),	/* 3 */
-/* 140 */	NdrFcShort( 0x28 ),	/* X64 Stack size/offset = 40 */
+/* 140 */	NdrFcShort( 0x28 ),	/* x86 Stack size/offset = 40 */
 /* 142 */	0x32,		/* FC_BIND_PRIMITIVE */
 			0x0,		/* 0 */
-/* 144 */	NdrFcShort( 0x0 ),	/* X64 Stack size/offset = 0 */
+/* 144 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
 /* 146 */	NdrFcShort( 0x8 ),	/* 8 */
 /* 148 */	NdrFcShort( 0x24 ),	/* 36 */
 /* 150 */	0x45,		/* Oi2 Flags:  srv must size, has return, has ext, */
@@ -399,27 +472,27 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 	/* Parameter pIsLicensed */
 
 /* 162 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
-/* 164 */	NdrFcShort( 0x8 ),	/* X64 Stack size/offset = 8 */
+/* 164 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
 /* 166 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
 	/* Parameter expiryBufLen */
 
 /* 168 */	NdrFcShort( 0x48 ),	/* Flags:  in, base type, */
-/* 170 */	NdrFcShort( 0x10 ),	/* X64 Stack size/offset = 16 */
+/* 170 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
 /* 172 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
 	/* Parameter expiryDate */
 
 /* 174 */	NdrFcShort( 0x13 ),	/* Flags:  must size, must free, out, */
-/* 176 */	NdrFcShort( 0x18 ),	/* X64 Stack size/offset = 24 */
+/* 176 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
 /* 178 */	NdrFcShort( 0x16 ),	/* Type Offset=22 */
 
 	/* Return value */
 
 /* 180 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
-/* 182 */	NdrFcShort( 0x20 ),	/* X64 Stack size/offset = 32 */
+/* 182 */	NdrFcShort( 0x20 ),	/* x86 Stack size/offset = 32 */
 /* 184 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
@@ -429,10 +502,10 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 			0x48,		/* Old Flags:  */
 /* 188 */	NdrFcLong( 0x0 ),	/* 0 */
 /* 192 */	NdrFcShort( 0x4 ),	/* 4 */
-/* 194 */	NdrFcShort( 0x18 ),	/* X64 Stack size/offset = 24 */
+/* 194 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
 /* 196 */	0x32,		/* FC_BIND_PRIMITIVE */
 			0x0,		/* 0 */
-/* 198 */	NdrFcShort( 0x0 ),	/* X64 Stack size/offset = 0 */
+/* 198 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
 /* 200 */	NdrFcShort( 0x0 ),	/* 0 */
 /* 202 */	NdrFcShort( 0x8 ),	/* 8 */
 /* 204 */	0x46,		/* Oi2 Flags:  clt must size, has return, has ext, */
@@ -447,14 +520,191 @@ static const Praktika_Api_MIDL_PROC_FORMAT_STRING Praktika_Api__MIDL_ProcFormatS
 	/* Parameter activationCode */
 
 /* 216 */	NdrFcShort( 0x10b ),	/* Flags:  must size, must free, in, simple ref, */
-/* 218 */	NdrFcShort( 0x8 ),	/* X64 Stack size/offset = 8 */
+/* 218 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
 /* 220 */	NdrFcShort( 0x10 ),	/* Type Offset=16 */
 
 	/* Return value */
 
 /* 222 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
-/* 224 */	NdrFcShort( 0x10 ),	/* X64 Stack size/offset = 16 */
+/* 224 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
 /* 226 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Procedure GetAvDbInfo */
+
+/* 228 */	0x0,		/* 0 */
+			0x48,		/* Old Flags:  */
+/* 230 */	NdrFcLong( 0x0 ),	/* 0 */
+/* 234 */	NdrFcShort( 0x5 ),	/* 5 */
+/* 236 */	NdrFcShort( 0x30 ),	/* x86 Stack size/offset = 48 */
+/* 238 */	0x32,		/* FC_BIND_PRIMITIVE */
+			0x0,		/* 0 */
+/* 240 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
+/* 242 */	NdrFcShort( 0x8 ),	/* 8 */
+/* 244 */	NdrFcShort( 0x40 ),	/* 64 */
+/* 246 */	0x45,		/* Oi2 Flags:  srv must size, has return, has ext, */
+			0x5,		/* 5 */
+/* 248 */	0xa,		/* 10 */
+			0x3,		/* Ext Flags:  new corr desc, clt corr check, */
+/* 250 */	NdrFcShort( 0x1 ),	/* 1 */
+/* 252 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 254 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 256 */	NdrFcShort( 0x0 ),	/* 0 */
+
+	/* Parameter pLoaded */
+
+/* 258 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 260 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
+/* 262 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter pRecordCount */
+
+/* 264 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 266 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
+/* 268 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter dateBufLen */
+
+/* 270 */	NdrFcShort( 0x48 ),	/* Flags:  in, base type, */
+/* 272 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
+/* 274 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter releaseDate */
+
+/* 276 */	NdrFcShort( 0x13 ),	/* Flags:  must size, must free, out, */
+/* 278 */	NdrFcShort( 0x20 ),	/* x86 Stack size/offset = 32 */
+/* 280 */	NdrFcShort( 0x22 ),	/* Type Offset=34 */
+
+	/* Return value */
+
+/* 282 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
+/* 284 */	NdrFcShort( 0x28 ),	/* x86 Stack size/offset = 40 */
+/* 286 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Procedure ScanFilePath */
+
+/* 288 */	0x0,		/* 0 */
+			0x48,		/* Old Flags:  */
+/* 290 */	NdrFcLong( 0x0 ),	/* 0 */
+/* 294 */	NdrFcShort( 0x6 ),	/* 6 */
+/* 296 */	NdrFcShort( 0x30 ),	/* x86 Stack size/offset = 48 */
+/* 298 */	0x32,		/* FC_BIND_PRIMITIVE */
+			0x0,		/* 0 */
+/* 300 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
+/* 302 */	NdrFcShort( 0x8 ),	/* 8 */
+/* 304 */	NdrFcShort( 0x24 ),	/* 36 */
+/* 306 */	0x47,		/* Oi2 Flags:  srv must size, clt must size, has return, has ext, */
+			0x5,		/* 5 */
+/* 308 */	0xa,		/* 10 */
+			0x3,		/* Ext Flags:  new corr desc, clt corr check, */
+/* 310 */	NdrFcShort( 0x1 ),	/* 1 */
+/* 312 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 314 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 316 */	NdrFcShort( 0x0 ),	/* 0 */
+
+	/* Parameter filePath */
+
+/* 318 */	NdrFcShort( 0x10b ),	/* Flags:  must size, must free, in, simple ref, */
+/* 320 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
+/* 322 */	NdrFcShort( 0x10 ),	/* Type Offset=16 */
+
+	/* Parameter pIsThreat */
+
+/* 324 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 326 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
+/* 328 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter nameBufLen */
+
+/* 330 */	NdrFcShort( 0x48 ),	/* Flags:  in, base type, */
+/* 332 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
+/* 334 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter threatName */
+
+/* 336 */	NdrFcShort( 0x13 ),	/* Flags:  must size, must free, out, */
+/* 338 */	NdrFcShort( 0x20 ),	/* x86 Stack size/offset = 32 */
+/* 340 */	NdrFcShort( 0x22 ),	/* Type Offset=34 */
+
+	/* Return value */
+
+/* 342 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
+/* 344 */	NdrFcShort( 0x28 ),	/* x86 Stack size/offset = 40 */
+/* 346 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Procedure ScanDirPath */
+
+/* 348 */	0x0,		/* 0 */
+			0x48,		/* Old Flags:  */
+/* 350 */	NdrFcLong( 0x0 ),	/* 0 */
+/* 354 */	NdrFcShort( 0x7 ),	/* 7 */
+/* 356 */	NdrFcShort( 0x40 ),	/* x86 Stack size/offset = 64 */
+/* 358 */	0x32,		/* FC_BIND_PRIMITIVE */
+			0x0,		/* 0 */
+/* 360 */	NdrFcShort( 0x0 ),	/* x86 Stack size/offset = 0 */
+/* 362 */	NdrFcShort( 0x8 ),	/* 8 */
+/* 364 */	NdrFcShort( 0x5c ),	/* 92 */
+/* 366 */	0x47,		/* Oi2 Flags:  srv must size, clt must size, has return, has ext, */
+			0x7,		/* 7 */
+/* 368 */	0xa,		/* 10 */
+			0x3,		/* Ext Flags:  new corr desc, clt corr check, */
+/* 370 */	NdrFcShort( 0x1 ),	/* 1 */
+/* 372 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 374 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 376 */	NdrFcShort( 0x0 ),	/* 0 */
+
+	/* Parameter dirPath */
+
+/* 378 */	NdrFcShort( 0x10b ),	/* Flags:  must size, must free, in, simple ref, */
+/* 380 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
+/* 382 */	NdrFcShort( 0x10 ),	/* Type Offset=16 */
+
+	/* Parameter pTotalFiles */
+
+/* 384 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 386 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
+/* 388 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter pScannedFiles */
+
+/* 390 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 392 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
+/* 394 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter pThreatsFound */
+
+/* 396 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 398 */	NdrFcShort( 0x20 ),	/* x86 Stack size/offset = 32 */
+/* 400 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter listBufLen */
+
+/* 402 */	NdrFcShort( 0x48 ),	/* Flags:  in, base type, */
+/* 404 */	NdrFcShort( 0x28 ),	/* x86 Stack size/offset = 40 */
+/* 406 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Parameter threatList */
+
+/* 408 */	NdrFcShort( 0x13 ),	/* Flags:  must size, must free, out, */
+/* 410 */	NdrFcShort( 0x30 ),	/* x86 Stack size/offset = 48 */
+/* 412 */	NdrFcShort( 0x2e ),	/* Type Offset=46 */
+
+	/* Return value */
+
+/* 414 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
+/* 416 */	NdrFcShort( 0x38 ),	/* x86 Stack size/offset = 56 */
+/* 418 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
 			0x0
@@ -472,7 +722,7 @@ static const Praktika_Api_MIDL_TYPE_FORMAT_STRING Praktika_Api__MIDL_TypeFormatS
 /*  4 */	NdrFcShort( 0x2 ),	/* 2 */
 /*  6 */	0x28,		/* Corr desc:  parameter, FC_LONG */
 			0x0,		/*  */
-/*  8 */	NdrFcShort( 0x8 ),	/* X64 Stack size/offset = 8 */
+/*  8 */	NdrFcShort( 0x8 ),	/* x86 Stack size/offset = 8 */
 /* 10 */	NdrFcShort( 0x1 ),	/* Corr flags:  early, */
 /* 12 */	0x5,		/* FC_WCHAR */
 			0x5b,		/* FC_END */
@@ -491,9 +741,29 @@ static const Praktika_Api_MIDL_TYPE_FORMAT_STRING Praktika_Api__MIDL_TypeFormatS
 /* 24 */	NdrFcShort( 0x2 ),	/* 2 */
 /* 26 */	0x28,		/* Corr desc:  parameter, FC_LONG */
 			0x0,		/*  */
-/* 28 */	NdrFcShort( 0x10 ),	/* X64 Stack size/offset = 16 */
+/* 28 */	NdrFcShort( 0x10 ),	/* x86 Stack size/offset = 16 */
 /* 30 */	NdrFcShort( 0x1 ),	/* Corr flags:  early, */
 /* 32 */	0x5,		/* FC_WCHAR */
+			0x5b,		/* FC_END */
+/* 34 */	
+			0x1b,		/* FC_CARRAY */
+			0x1,		/* 1 */
+/* 36 */	NdrFcShort( 0x2 ),	/* 2 */
+/* 38 */	0x28,		/* Corr desc:  parameter, FC_LONG */
+			0x0,		/*  */
+/* 40 */	NdrFcShort( 0x18 ),	/* x86 Stack size/offset = 24 */
+/* 42 */	NdrFcShort( 0x1 ),	/* Corr flags:  early, */
+/* 44 */	0x5,		/* FC_WCHAR */
+			0x5b,		/* FC_END */
+/* 46 */	
+			0x1b,		/* FC_CARRAY */
+			0x1,		/* 1 */
+/* 48 */	NdrFcShort( 0x2 ),	/* 2 */
+/* 50 */	0x28,		/* Corr desc:  parameter, FC_LONG */
+			0x0,		/*  */
+/* 52 */	NdrFcShort( 0x28 ),	/* x86 Stack size/offset = 40 */
+/* 54 */	NdrFcShort( 0x1 ),	/* Corr flags:  early, */
+/* 56 */	0x5,		/* FC_WCHAR */
 			0x5b,		/* FC_END */
 
 			0x0
@@ -506,770 +776,10 @@ static const unsigned short Praktika_Api_FormatStringOffsetTable[] =
     48,
     96,
     132,
-    186
-    };
-
-
-
-#endif /* defined(_M_AMD64)*/
-
-
-
-/* this ALWAYS GENERATED file contains the RPC client stubs */
-
-
- /* File created by MIDL compiler version 8.01.0628 */
-/* at Tue Jan 19 06:14:07 2038
- */
-/* Compiler settings for Praktika_Api.idl:
-    Oicf, W1, Zp8, env=Win64 (32b run), target_arch=AMD64 8.01.0628 
-    protocol : all , ms_ext, c_ext, robust
-    error checks: allocation ref bounds_check enum stub_data 
-    VC __declspec() decoration level: 
-         __declspec(uuid()), __declspec(selectany), __declspec(novtable)
-         DECLSPEC_UUID(), MIDL_INTERFACE()
-*/
-/* @@MIDL_FILE_HEADING(  ) */
-
-#if defined(_M_AMD64)
-
-
-
-
-#if !defined(__RPC_WIN64__)
-#error  Invalid build platform for this stub.
-#endif
-
-
-#include "ndr64types.h"
-#include "pshpack8.h"
-#ifdef __cplusplus
-namespace {
-#endif
-
-
-typedef 
-NDR64_FORMAT_CHAR
-__midl_frag27_t;
-extern const __midl_frag27_t __midl_frag27;
-
-typedef 
-struct _NDR64_CONFORMANT_STRING_FORMAT
-__midl_frag26_t;
-extern const __midl_frag26_t __midl_frag26;
-
-typedef 
-struct _NDR64_POINTER_FORMAT
-__midl_frag25_t;
-extern const __midl_frag25_t __midl_frag25;
-
-typedef 
-struct 
-{
-    struct _NDR64_PROC_FORMAT frag1;
-    struct _NDR64_BIND_AND_NOTIFY_EXTENSION frag2;
-    struct _NDR64_PARAM_FORMAT frag3;
-    struct _NDR64_PARAM_FORMAT frag4;
-}
-__midl_frag24_t;
-extern const __midl_frag24_t __midl_frag24;
-
-typedef 
-NDR64_FORMAT_CHAR
-__midl_frag22_t;
-extern const __midl_frag22_t __midl_frag22;
-
-typedef 
-struct 
-{
-    NDR64_FORMAT_UINT32 frag1;
-    struct _NDR64_EXPR_VAR frag2;
-}
-__midl_frag21_t;
-extern const __midl_frag21_t __midl_frag21;
-
-typedef 
-struct 
-{
-    struct _NDR64_CONF_ARRAY_HEADER_FORMAT frag1;
-    struct _NDR64_ARRAY_ELEMENT_INFO frag2;
-}
-__midl_frag20_t;
-extern const __midl_frag20_t __midl_frag20;
-
-typedef 
-struct _NDR64_POINTER_FORMAT
-__midl_frag17_t;
-extern const __midl_frag17_t __midl_frag17;
-
-typedef 
-struct 
-{
-    struct _NDR64_PROC_FORMAT frag1;
-    struct _NDR64_BIND_AND_NOTIFY_EXTENSION frag2;
-    struct _NDR64_PARAM_FORMAT frag3;
-    struct _NDR64_PARAM_FORMAT frag4;
-    struct _NDR64_PARAM_FORMAT frag5;
-    struct _NDR64_PARAM_FORMAT frag6;
-}
-__midl_frag16_t;
-extern const __midl_frag16_t __midl_frag16;
-
-typedef 
-struct 
-{
-    struct _NDR64_PROC_FORMAT frag1;
-    struct _NDR64_BIND_AND_NOTIFY_EXTENSION frag2;
-    struct _NDR64_PARAM_FORMAT frag3;
-}
-__midl_frag14_t;
-extern const __midl_frag14_t __midl_frag14;
-
-typedef 
-struct 
-{
-    struct _NDR64_PROC_FORMAT frag1;
-    struct _NDR64_BIND_AND_NOTIFY_EXTENSION frag2;
-    struct _NDR64_PARAM_FORMAT frag3;
-    struct _NDR64_PARAM_FORMAT frag4;
-    struct _NDR64_PARAM_FORMAT frag5;
-}
-__midl_frag8_t;
-extern const __midl_frag8_t __midl_frag8;
-
-typedef 
-struct 
-{
-    NDR64_FORMAT_UINT32 frag1;
-    struct _NDR64_EXPR_VAR frag2;
-}
-__midl_frag5_t;
-extern const __midl_frag5_t __midl_frag5;
-
-typedef 
-struct 
-{
-    struct _NDR64_CONF_ARRAY_HEADER_FORMAT frag1;
-    struct _NDR64_ARRAY_ELEMENT_INFO frag2;
-}
-__midl_frag4_t;
-extern const __midl_frag4_t __midl_frag4;
-
-typedef 
-struct 
-{
-    struct _NDR64_PROC_FORMAT frag1;
-    struct _NDR64_BIND_AND_NOTIFY_EXTENSION frag2;
-    struct _NDR64_PARAM_FORMAT frag3;
-    struct _NDR64_PARAM_FORMAT frag4;
-    struct _NDR64_PARAM_FORMAT frag5;
-}
-__midl_frag2_t;
-extern const __midl_frag2_t __midl_frag2;
-
-typedef 
-NDR64_FORMAT_UINT32
-__midl_frag1_t;
-extern const __midl_frag1_t __midl_frag1;
-
-static const __midl_frag27_t __midl_frag27 =
-0x5    /* FC64_INT32 */;
-
-static const __midl_frag26_t __midl_frag26 =
-{ 
-/* *wchar_t */
-    { 
-    /* *wchar_t */
-        0x64,    /* FC64_CONF_WCHAR_STRING */
-        { 
-        /* *wchar_t */
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-        },
-        (NDR64_UINT16) 2 /* 0x2 */
-    }
-};
-
-static const __midl_frag25_t __midl_frag25 =
-{ 
-/* *wchar_t */
-    0x20,    /* FC64_RP */
-    (NDR64_UINT8) 0 /* 0x0 */,
-    (NDR64_UINT16) 0 /* 0x0 */,
-    &__midl_frag26
-};
-
-static const __midl_frag24_t __midl_frag24 =
-{ 
-/* ActivateProduct */
-    { 
-    /* ActivateProduct */      /* procedure ActivateProduct */
-        (NDR64_UINT32) 17563712 /* 0x10c0040 */,    /* explicit handle */ /* IsIntrepreted, ClientMustSize, HasReturn, HasExtensions */
-        (NDR64_UINT32) 24 /* 0x18 */ ,  /* Stack size */
-        (NDR64_UINT32) 0 /* 0x0 */,
-        (NDR64_UINT32) 8 /* 0x8 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 2 /* 0x2 */,
-        (NDR64_UINT16) 8 /* 0x8 */
-    },
-    { 
-    /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-        { 
-        /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-            0x72,    /* FC64_BIND_PRIMITIVE */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            0 /* 0x0 */,   /* Stack offset */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            (NDR64_UINT8) 0 /* 0x0 */
-        },
-        (NDR64_UINT16) 0 /* 0x0 */      /* Notify index */
-    },
-    { 
-    /* activationCode */      /* parameter activationCode */
-        &__midl_frag26,
-        { 
-        /* activationCode */
-            1,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* MustSize, MustFree, [in], SimpleRef */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        8 /* 0x8 */,   /* Stack offset */
-    },
-    { 
-    /* long */      /* parameter long */
-        &__midl_frag27,
-        { 
-        /* long */
-            0,
-            0,
-            0,
-            0,
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* [out], IsReturn, Basetype, ByValue */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        16 /* 0x10 */,   /* Stack offset */
-    }
-};
-
-static const __midl_frag22_t __midl_frag22 =
-0x11    /* FC64_WCHAR */;
-
-static const __midl_frag21_t __midl_frag21 =
-{ 
-/*  */
-    (NDR64_UINT32) 1 /* 0x1 */,
-    { 
-    /* struct _NDR64_EXPR_VAR */
-        0x3,    /* FC_EXPR_VAR */
-        0x5,    /* FC64_INT32 */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT32) 16 /* 0x10 */  /* Offset */
-    }
-};
-
-static const __midl_frag20_t __midl_frag20 =
-{ 
-/*  */
-    { 
-    /* struct _NDR64_CONF_ARRAY_HEADER_FORMAT */
-        0x41,    /* FC64_CONF_ARRAY */
-        (NDR64_UINT8) 1 /* 0x1 */,
-        { 
-        /* struct _NDR64_CONF_ARRAY_HEADER_FORMAT */
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-        },
-        (NDR64_UINT8) 0 /* 0x0 */,
-        (NDR64_UINT32) 2 /* 0x2 */,
-        &__midl_frag21
-    },
-    { 
-    /* struct _NDR64_ARRAY_ELEMENT_INFO */
-        (NDR64_UINT32) 2 /* 0x2 */,
-        &__midl_frag22
-    }
-};
-
-static const __midl_frag17_t __midl_frag17 =
-{ 
-/* *long */
-    0x20,    /* FC64_RP */
-    (NDR64_UINT8) 12 /* 0xc */,
-    (NDR64_UINT16) 0 /* 0x0 */,
-    &__midl_frag27
-};
-
-static const __midl_frag16_t __midl_frag16 =
-{ 
-/* GetLicenseInfo */
-    { 
-    /* GetLicenseInfo */      /* procedure GetLicenseInfo */
-        (NDR64_UINT32) 21626944 /* 0x14a0040 */,    /* explicit handle */ /* IsIntrepreted, ServerMustSize, HasReturn, ClientCorrelation, HasExtensions */
-        (NDR64_UINT32) 40 /* 0x28 */ ,  /* Stack size */
-        (NDR64_UINT32) 8 /* 0x8 */,
-        (NDR64_UINT32) 40 /* 0x28 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 4 /* 0x4 */,
-        (NDR64_UINT16) 8 /* 0x8 */
-    },
-    { 
-    /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-        { 
-        /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-            0x72,    /* FC64_BIND_PRIMITIVE */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            0 /* 0x0 */,   /* Stack offset */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            (NDR64_UINT8) 0 /* 0x0 */
-        },
-        (NDR64_UINT16) 0 /* 0x0 */      /* Notify index */
-    },
-    { 
-    /* pIsLicensed */      /* parameter pIsLicensed */
-        &__midl_frag27,
-        { 
-        /* pIsLicensed */
-            0,
-            0,
-            0,
-            0,
-            1,
-            0,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            1
-        },    /* [out], Basetype, SimpleRef, UseCache */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        8 /* 0x8 */,   /* Stack offset */
-    },
-    { 
-    /* expiryBufLen */      /* parameter expiryBufLen */
-        &__midl_frag27,
-        { 
-        /* expiryBufLen */
-            0,
-            0,
-            0,
-            1,
-            0,
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* [in], Basetype, ByValue */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        16 /* 0x10 */,   /* Stack offset */
-    },
-    { 
-    /* expiryDate */      /* parameter expiryDate */
-        &__midl_frag20,
-        { 
-        /* expiryDate */
-            1,
-            1,
-            0,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* MustSize, MustFree, [out] */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        24 /* 0x18 */,   /* Stack offset */
-    },
-    { 
-    /* long */      /* parameter long */
-        &__midl_frag27,
-        { 
-        /* long */
-            0,
-            0,
-            0,
-            0,
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* [out], IsReturn, Basetype, ByValue */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        32 /* 0x20 */,   /* Stack offset */
-    }
-};
-
-static const __midl_frag14_t __midl_frag14 =
-{ 
-/* Logout */
-    { 
-    /* Logout */      /* procedure Logout */
-        (NDR64_UINT32) 17301568 /* 0x1080040 */,    /* explicit handle */ /* IsIntrepreted, HasReturn, HasExtensions */
-        (NDR64_UINT32) 16 /* 0x10 */ ,  /* Stack size */
-        (NDR64_UINT32) 0 /* 0x0 */,
-        (NDR64_UINT32) 8 /* 0x8 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 1 /* 0x1 */,
-        (NDR64_UINT16) 8 /* 0x8 */
-    },
-    { 
-    /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-        { 
-        /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-            0x72,    /* FC64_BIND_PRIMITIVE */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            0 /* 0x0 */,   /* Stack offset */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            (NDR64_UINT8) 0 /* 0x0 */
-        },
-        (NDR64_UINT16) 0 /* 0x0 */      /* Notify index */
-    },
-    { 
-    /* long */      /* parameter long */
-        &__midl_frag27,
-        { 
-        /* long */
-            0,
-            0,
-            0,
-            0,
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* [out], IsReturn, Basetype, ByValue */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        8 /* 0x8 */,   /* Stack offset */
-    }
-};
-
-static const __midl_frag8_t __midl_frag8 =
-{ 
-/* Login */
-    { 
-    /* Login */      /* procedure Login */
-        (NDR64_UINT32) 17563712 /* 0x10c0040 */,    /* explicit handle */ /* IsIntrepreted, ClientMustSize, HasReturn, HasExtensions */
-        (NDR64_UINT32) 32 /* 0x20 */ ,  /* Stack size */
-        (NDR64_UINT32) 0 /* 0x0 */,
-        (NDR64_UINT32) 8 /* 0x8 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 3 /* 0x3 */,
-        (NDR64_UINT16) 8 /* 0x8 */
-    },
-    { 
-    /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-        { 
-        /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-            0x72,    /* FC64_BIND_PRIMITIVE */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            0 /* 0x0 */,   /* Stack offset */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            (NDR64_UINT8) 0 /* 0x0 */
-        },
-        (NDR64_UINT16) 0 /* 0x0 */      /* Notify index */
-    },
-    { 
-    /* username */      /* parameter username */
-        &__midl_frag26,
-        { 
-        /* username */
-            1,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* MustSize, MustFree, [in], SimpleRef */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        8 /* 0x8 */,   /* Stack offset */
-    },
-    { 
-    /* password */      /* parameter password */
-        &__midl_frag26,
-        { 
-        /* password */
-            1,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* MustSize, MustFree, [in], SimpleRef */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        16 /* 0x10 */,   /* Stack offset */
-    },
-    { 
-    /* long */      /* parameter long */
-        &__midl_frag27,
-        { 
-        /* long */
-            0,
-            0,
-            0,
-            0,
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* [out], IsReturn, Basetype, ByValue */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        24 /* 0x18 */,   /* Stack offset */
-    }
-};
-
-static const __midl_frag5_t __midl_frag5 =
-{ 
-/*  */
-    (NDR64_UINT32) 1 /* 0x1 */,
-    { 
-    /* struct _NDR64_EXPR_VAR */
-        0x3,    /* FC_EXPR_VAR */
-        0x5,    /* FC64_INT32 */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT32) 8 /* 0x8 */  /* Offset */
-    }
-};
-
-static const __midl_frag4_t __midl_frag4 =
-{ 
-/*  */
-    { 
-    /* struct _NDR64_CONF_ARRAY_HEADER_FORMAT */
-        0x41,    /* FC64_CONF_ARRAY */
-        (NDR64_UINT8) 1 /* 0x1 */,
-        { 
-        /* struct _NDR64_CONF_ARRAY_HEADER_FORMAT */
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-        },
-        (NDR64_UINT8) 0 /* 0x0 */,
-        (NDR64_UINT32) 2 /* 0x2 */,
-        &__midl_frag5
-    },
-    { 
-    /* struct _NDR64_ARRAY_ELEMENT_INFO */
-        (NDR64_UINT32) 2 /* 0x2 */,
-        &__midl_frag22
-    }
-};
-
-static const __midl_frag2_t __midl_frag2 =
-{ 
-/* GetAuthInfo */
-    { 
-    /* GetAuthInfo */      /* procedure GetAuthInfo */
-        (NDR64_UINT32) 21626944 /* 0x14a0040 */,    /* explicit handle */ /* IsIntrepreted, ServerMustSize, HasReturn, ClientCorrelation, HasExtensions */
-        (NDR64_UINT32) 32 /* 0x20 */ ,  /* Stack size */
-        (NDR64_UINT32) 8 /* 0x8 */,
-        (NDR64_UINT32) 8 /* 0x8 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 0 /* 0x0 */,
-        (NDR64_UINT16) 3 /* 0x3 */,
-        (NDR64_UINT16) 8 /* 0x8 */
-    },
-    { 
-    /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-        { 
-        /* struct _NDR64_BIND_AND_NOTIFY_EXTENSION */
-            0x72,    /* FC64_BIND_PRIMITIVE */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            0 /* 0x0 */,   /* Stack offset */
-            (NDR64_UINT8) 0 /* 0x0 */,
-            (NDR64_UINT8) 0 /* 0x0 */
-        },
-        (NDR64_UINT16) 0 /* 0x0 */      /* Notify index */
-    },
-    { 
-    /* bufLen */      /* parameter bufLen */
-        &__midl_frag27,
-        { 
-        /* bufLen */
-            0,
-            0,
-            0,
-            1,
-            0,
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* [in], Basetype, ByValue */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        8 /* 0x8 */,   /* Stack offset */
-    },
-    { 
-    /* username */      /* parameter username */
-        &__midl_frag4,
-        { 
-        /* username */
-            1,
-            1,
-            0,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* MustSize, MustFree, [out] */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        16 /* 0x10 */,   /* Stack offset */
-    },
-    { 
-    /* long */      /* parameter long */
-        &__midl_frag27,
-        { 
-        /* long */
-            0,
-            0,
-            0,
-            0,
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            (NDR64_UINT16) 0 /* 0x0 */,
-            0
-        },    /* [out], IsReturn, Basetype, ByValue */
-        (NDR64_UINT16) 0 /* 0x0 */,
-        24 /* 0x18 */,   /* Stack offset */
-    }
-};
-
-static const __midl_frag1_t __midl_frag1 =
-(NDR64_UINT32) 0 /* 0x0 */;
-#ifdef __cplusplus
-}
-#endif
-
-
-#include "poppack.h"
-
-
-static const FormatInfoRef Praktika_Api_Ndr64ProcTable[] =
-    {
-    &__midl_frag2,
-    &__midl_frag8,
-    &__midl_frag14,
-    &__midl_frag16,
-    &__midl_frag24
+    186,
+    228,
+    288,
+    348
     };
 
 
@@ -1288,56 +798,21 @@ static const MIDL_STUB_DESC Praktika_Api_StubDesc =
     0,
     Praktika_Api__MIDL_TypeFormatString.Format,
     1, /* -error bounds_check flag */
-    0xa0000, /* Ndr library version */
+    0x60001, /* Ndr library version */
     0,
     0x8010274, /* MIDL Version 8.1.628 */
     0,
     0,
     0,  /* notify & notify_flag routine table */
-    0x2000001, /* MIDL flag */
+    0x1, /* MIDL flag */
     0, /* cs routines */
-    (void *)& Praktika_Api_ProxyInfo,   /* proxy/server info */
+    0,   /* proxy/server info */
     0
     };
 #ifdef __cplusplus
 }
 #endif
-
-static const MIDL_SYNTAX_INFO Praktika_Api_SyntaxInfo [  2 ] = 
-    {
-    {
-    {{0x8A885D04,0x1CEB,0x11C9,{0x9F,0xE8,0x08,0x00,0x2B,0x10,0x48,0x60}},{2,0}},
-    0,
-    Praktika_Api__MIDL_ProcFormatString.Format,
-    Praktika_Api_FormatStringOffsetTable,
-    Praktika_Api__MIDL_TypeFormatString.Format,
-    0,
-    0,
-    0
-    }
-    ,{
-    {{0x71710533,0xbeba,0x4937,{0x83,0x19,0xb5,0xdb,0xef,0x9c,0xcc,0x36}},{1,0}},
-    0,
-    0 ,
-    (unsigned short *) Praktika_Api_Ndr64ProcTable,
-    0,
-    0,
-    0,
-    0
-    }
-    };
-
-static const MIDL_STUBLESS_PROXY_INFO Praktika_Api_ProxyInfo =
-    {
-    &Praktika_Api_StubDesc,
-    Praktika_Api__MIDL_ProcFormatString.Format,
-    Praktika_Api_FormatStringOffsetTable,
-    (RPC_SYNTAX_IDENTIFIER*)&_RpcTransferSyntax_2_0,
-    2,
-    (MIDL_SYNTAX_INFO*)Praktika_Api_SyntaxInfo
-    
-    };
-
+#pragma optimize("", on )
 #if _MSC_VER >= 1200
 #pragma warning(pop)
 #endif

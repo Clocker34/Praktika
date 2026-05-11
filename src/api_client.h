@@ -25,3 +25,16 @@ long Praktika_RpcGetLicenseInfo(bool& isLicensed, std::wstring& expiryDate);
 // Активировать продукт по коду.
 // Возвращает 0 при успехе, код ошибки при неудаче.
 long Praktika_RpcActivateProduct(const wchar_t* activationCode);
+
+// ---- Задание 3: АВ-движок ----
+
+// Получить информацию об АВ-базах.
+long Praktika_RpcGetAvDbInfo(bool& loaded, long& recordCount, std::wstring& releaseDate);
+
+// Сканировать файл. isThreat: true если угроза.
+long Praktika_RpcScanFile(const wchar_t* filePath, bool& isThreat, std::wstring& threatName);
+
+// Сканировать директорию. threatList: "path|name\n..."
+long Praktika_RpcScanDir(const wchar_t* dirPath, long& totalFiles,
+                         long& scannedFiles, long& threatsFound,
+                         std::wstring& threatList);

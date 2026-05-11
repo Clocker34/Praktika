@@ -13,6 +13,8 @@
 #include "../app_config.h"
 #include "auth_manager.h"
 #include "license_manager.h"
+#include "av_database.h"
+#include "scan_engine.h"
 
 extern "C" {
 #include "Praktika_Stop.h"
@@ -610,7 +612,68 @@ extern "C" long GetLicenseInfo(handle_t, long* pIsLicensed,
 extern "C" long ActivateProduct(handle_t, const wchar_t* activationCode) {
   if (!activationCode) return CYCL_ACTIVATION_FAILED;
   if (!auth::IsAuthenticated()) return CYCL_NOT_AUTHENTICATED;
-  return license::Activate(activationCode);
+  long result = license::Activate(activationCode);
+  // п.1: после успешной активации загружаем АВ-базы.
+  if (result == CYCL_OK && !av::IsLoaded()) {
+    av::LoadDatabase();
+  }
+  return result;
+}
+
+// ---- Задание 3: АВ-движок — RPC-обработчики ----
+
+// п.7: информация об антивирусных базах.
+extern "C" long GetAvDbInfo(handle_t, long* pLoaded, long* pRecordCount,
+                            long dateBufLen, wchar_t* releaseDate) {
+  if (!pLoaded || !pRecordCount || !releaseDate) return CYCL_SERVER_ERROR;
+  auto info = av::GetDbInfo();
+  *pLoaded = info.loaded ? 1 : 0;
+  *pRecordCount = static_cast<long>(info.recordCount);
+  if (dateBufLen > 0) {
+    wcsncpy_s(releaseDate, dateBufLen, info.releaseDate.c_str(), _TRUNCATE);
+  }
+  return CYCL_OK;
+}
+
+// п.6: сканирование файла.
+extern "C" long ScanFilePath(handle_t, const wchar_t* filePath,
+                             long* pIsThreat, long nameBufLen,
+                             wchar_t* threatName) {
+  if (!filePath || !pIsThreat || !threatName) return CYCL_SERVER_ERROR;
+  if (!av::IsLoaded()) return CYCL_NO_LICENSE; // Базы не загружены
+  auto res = scan::ScanFile(filePath);
+  *pIsThreat = res.isThreat ? 1 : 0;
+  if (res.isThreat && nameBufLen > 0) {
+    std::wstring name(res.threatName.begin(), res.threatName.end());
+    wcsncpy_s(threatName, nameBufLen, name.c_str(), _TRUNCATE);
+  } else if (nameBufLen > 0) {
+    threatName[0] = L'\0';
+  }
+  return CYCL_OK;
+}
+
+// п.6: сканирование директории.
+extern "C" long ScanDirPath(handle_t, const wchar_t* dirPath,
+                            long* pTotalFiles, long* pScannedFiles,
+                            long* pThreatsFound, long listBufLen,
+                            wchar_t* threatList) {
+  if (!dirPath || !pTotalFiles || !pScannedFiles || !pThreatsFound || !threatList)
+    return CYCL_SERVER_ERROR;
+  if (!av::IsLoaded()) return CYCL_NO_LICENSE;
+  auto dr = scan::ScanDirectory(dirPath);
+  *pTotalFiles = static_cast<long>(dr.totalFiles);
+  *pScannedFiles = static_cast<long>(dr.scannedFiles);
+  *pThreatsFound = static_cast<long>(dr.threatsFound);
+  // Формируем список: "path|threatName\n..."
+  std::wstring list;
+  for (const auto& t : dr.threats) {
+    list += t.filePath + L"|";
+    list += std::wstring(t.threatName.begin(), t.threatName.end()) + L"\n";
+  }
+  if (listBufLen > 0) {
+    wcsncpy_s(threatList, listBufLen, list.c_str(), _TRUNCATE);
+  }
+  return CYCL_OK;
 }
 
 // ----- install / uninstall -----
