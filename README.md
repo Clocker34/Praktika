@@ -1,6 +1,6 @@
 # Praktika
 
-Учебный проект на **Windows**, **C/C++**: трей-приложение (**задание 1**) + Windows-служба и **Windows RPC (ALPC)** (**задание 2**). Сборка — **CMake + MSVC (x64)**; разработка в **VS Code** с расширением CMake Tools.
+Учебный проект на **Windows**, **C/C++**: трей-приложение (**задание 1**) + Windows-служба и **Windows RPC (ALPC)** (**задание 2**) + аутентификация, лицензирование и **антивирусный движок** (**задание 3**). Сборка — **CMake + MSVC (x64)**; разработка в **VS Code** с расширением CMake Tools.
 
 ---
 
@@ -8,10 +8,13 @@
 
 | Ветка | Содержание |
 |-------|------------|
-| `main` | Задание 1: Win32-трей, CMake, VS Code, CI (`Praktika.exe`). |
-| `assignment-2` | Задание 2: служба `PraktikaService.exe`, RPC/alpc, WTS, bootstrap GUI; необязательные баллы (диалог остановки, DACL). |
-
-После клонирования для проверки второго задания переключитесь: `git checkout assignment-2`.
+| `main` | **Все задания** (1 + 2 + 3): трей, служба, RPC, аутентификация, лицензирование, АВ-движок. |
+| `assignment-2` | Задание 2: служба `PraktikaService.exe`, RPC/ALPC, WTS, bootstrap GUI; необязательные баллы (диалог остановки, DACL). |
+| `task/2.1-gui` | Задание 1: Win32-трей, CMake, VS Code, CI (`Praktika.exe`). |
+| `task/2.2-service` | Задание 2: служба + WTS + RPC. |
+| `task/2.3-auth` | Задание 3: аутентификация + лицензирование через HTTPS + RPC-интерфейс `Praktika_Api`. |
+| `task/2.4-av-engine` | Задание 3: АВ-базы, сканирование файлов/папок. |
+| `task/3-av-engine` | Финальная ветка задания 3 с фиксами. |
 
 ---
 
@@ -50,7 +53,7 @@ cmake --build build --config Release
    `C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe`  
    можно вызывать с полным путём без настройки PATH.
 
-MIDL-стабы (`rpc/Praktika_Stop_*.{h,c}`) **закоммичены**; перегенерировать после правок IDL — **`scripts\gen_midl.bat`** (нужна среда **Visual Studio Build Tools 2022** и `midl.exe`).
+MIDL-стабы (`rpc/Praktika_Stop_*.{h,c}`, `rpc/Praktika_Api_*.{h,c}`) **закоммичены**; перегенерировать после правок IDL — **`scripts\gen_midl.bat`** (нужна среда **Visual Studio Build Tools 2022** и `midl.exe`).
 
 ---
 
@@ -78,17 +81,21 @@ sc.exe stop PraktikaSvc        # не сработает по дизайну: ST
 .\PraktikaService.exe uninstall  # сначала остановите через GUI «Выход» (RPC)
 ```
 
-> Служба **не принимает** `STOP` и `SHUTDOWN` (п. 3 ТЗ). Остановка — через **Выход** в меню приложения или трее: вызывается RPC-метод `Praktika_Stop::RequestStop`. Перед остановкой (необязательный балл) показывается диалог подтверждения в активной пользовательской сессии.
+> Служба **не принимает** `STOP` и `SHUTDOWN` (п. 3 ТЗ). Остановка — через **Выход** в меню приложения или трее: вызывается RPC-метод `Praktika_Stop::RequestStop`. Перед остановкой (необязательный балл) показывается диалог подтверждения в активной пользовательской сессии.
 
 ---
 
 ## Архитектура
 
-### Межпроцессное взаимодействие
+### Межпроцессное взаимодействие (RPC/ALPC)
 
-- Транспорт **ALPC** через **Windows RPC**, протокол **`ncalrpc`**, эндпоинт **`PraktikaSvcStop`**.
-- IDL: `rpc/Praktika_Stop.idl` — метод `RequestStop()`.
-- Клиент GUI: `src/service_client.cpp` (`Praktika_CallRequestStop`).
+- Транспорт **ALPC** через **Windows RPC**, протокол **`ncalrpc`**.
+- **Эндпоинт 1**: `PraktikaSvcStop` — остановка службы (задание 2).
+  - IDL: `rpc/Praktika_Stop.idl` — метод `RequestStop()`.
+  - Клиент GUI: `src/service_client.cpp` (`Praktika_CallRequestStop`).
+- **Эндпоинт 2**: `PraktikaSvcApi` — аутентификация, лицензирование, АВ-сканирование (задание 3).
+  - IDL: `rpc/Praktika_Api.idl` — методы `Login`, `Logout`, `GetAuthInfo`, `GetLicenseInfo`, `ActivateProduct`, `GetAvDbInfo`, `ScanFilePath`, `ScanDirPath`.
+  - Клиент GUI: `src/api_client.cpp`.
 - Сервер службы: `src/service/PraktikaService.cpp` (поток `RpcThread`, `RpcServerListen`).
 
 ### Служба `PraktikaService.exe`
@@ -96,11 +103,26 @@ sc.exe stop PraktikaSvc        # не сработает по дизайну: ST
 | Требование (задание 2) | Реализация |
 |------------------------|------------|
 | 1. Запуск GUI во всех сессиях ≠ 0, от владельца, окно скрыто | `WTSEnumerateSessionsW` (только `WTSActive`) → `WTSQueryUserToken` + `DuplicateTokenEx` → `CreateProcessAsUserW`, аргументы `/background --silent /fromservice:<pid>` |
-| 2. Слежение за новыми пользователями | `SERVICE_ACCEPT_SESSIONCHANGE` + `WTS_SESSION_LOGON` → `LaunchInSession` |
+| 2. Слежение за новыми пользователями | `SERVICE_ACCEPT_SESSIONCHANGE` + `WTS_SESSION_LOGON` / `WTS_SESSION_RECONNECT` → `LaunchInSession` |
 | 3. STOP/SHUTDOWN отключены | В `HandlerEx`: `ERROR_CALL_NOT_IMPLEMENTED`; `dwControlsAccepted` = только `SERVICE_ACCEPT_SESSIONCHANGE` |
 | 4. RPC-сервер ALPC | Отдельный поток с `RpcServerListen`; `ServiceMain` ждёт его `WaitForSingleObject` |
-| 5. Интерфейс остановки | `Praktika_Stop_v1_0_s_ifspec` через `RpcServerRegisterIf2` |
+| 5. Интерфейс остановки | `Praktika_Stop_v1_0_s_ifspec` через `RpcServerRegisterIf` |
 | 6. При остановке завершить все GUI | `KillAllChildren`: `TerminateProcess` по сохранённым `HANDLE` дочерних процессов |
+
+### Задание 3: Аутентификация, лицензирование, АВ-движок
+
+| Требование | Реализация |
+|------------|------------|
+| 1. Аутентификация (JWT) | `src/service/auth_manager.cpp`: POST `/auth/login` → access + refresh токены в памяти (п.9: не на диск, п.8: не передаются клиентам) |
+| 2. Автообновление токенов | Фоновый поток `RefreshThread` вычисляет delay по `exp`-клейму JWT, обновляет за 60 с до истечения через POST `/auth/refresh` |
+| 3. Выход (Logout) | `auth::Logout()` + `license::ClearTicket()` — `SecureZeroMemory` для JWT |
+| 4. Лицензирование | `src/service/license_manager.cpp`: POST `/license/activate`, фоновая проверка валидности |
+| 5. АВ-базы | `src/service/av_database.cpp`: 75 сигнатур (MD5/SHA256/YARA), загрузка при активации |
+| 6. Сканирование файлов/папок | `src/service/scan_engine.cpp`: проверка по хешу, имени, содержимому (YARA-паттерны) |
+| 7. RPC-интерфейс | `Praktika_Api_v1_0_s_ifspec`: `GetAuthInfo`, `Login`, `Logout`, `GetLicenseInfo`, `ActivateProduct`, `GetAvDbInfo`, `ScanFilePath`, `ScanDirPath` |
+| 8. GUI (dark theme) | `src/main.cpp`: 3 состояния (Auth → Activation → Main), owner-drawn кнопки, Segoe UI, цветовая палитра, async polling через `std::thread` + `PostMessageW` |
+| 9. Блокировка при отсутствии лицензии | Статус «ЗАБЛОКИРОВАН», кнопки сканирования скрыты, показана форма активации |
+| 10. Отображение пользователя | `SetWindowTextW(g_hMainUserLbl, "Пользователь: " + username)` |
 
 `install` / `uninstall` (идея как у [lqt5h/ziovpontvrs](https://github.com/lqt5h/ziovpontvrs)): `CreateServiceW` (`SERVICE_AUTO_START`) и `DeleteService`.
 
