@@ -1,4 +1,4 @@
-// RPC-клиент GUI: ncalrpc/ALPC, эндпоинт совпадает с Praktika_Stop.idl.
+  // RPC-клиент GUI: ncalrpc/ALPC, эндпоинт совпадает с Praktika_Stop.idl.
 #include "service_client.h"
 
 #include <windows.h>

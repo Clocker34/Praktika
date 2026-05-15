@@ -32,10 +32,9 @@ extern "C" {
 #include <stdio.h>
 
 #include <aclapi.h>
-#include <accctrl.h>
-
 #include <string>
 #include <vector>
+#include <sddl.h>
 
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "Wtsapi32.lib")
@@ -425,46 +424,42 @@ void LaunchInAllSessions() {
 DWORD WINAPI RpcThread(LPVOID) {
   static wchar_t kProt[] = L"ncalrpc";
 
+  PSECURITY_DESCRIPTOR pSd = nullptr;
+  ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:(A;;GA;;;WD)", SDDL_REVISION_1, &pSd, nullptr);
+
   // Эндпоинт 1: Praktika_Stop (зад.2).
   static wchar_t kEpStop[] = L"PraktikaSvcStop";
   RPC_STATUS s = RpcServerUseProtseqEpW(reinterpret_cast<RPC_WSTR>(kProt), 32,
                                         reinterpret_cast<RPC_WSTR>(kEpStop),
-                                        nullptr);
+                                        pSd);
   if (s != RPC_S_OK && s != RPC_S_DUPLICATE_ENDPOINT) {
+    if (pSd) LocalFree(pSd);
     return 1;
   }
 
   // Эндпоинт 2: Praktika_Api (зад.3 п.10).
   static wchar_t kEpApi[] = PRAKTIKA_RPC_API_ENDPOINT;
   s = RpcServerUseProtseqEpW(reinterpret_cast<RPC_WSTR>(kProt), 32,
-                             reinterpret_cast<RPC_WSTR>(kEpApi), nullptr);
+                             reinterpret_cast<RPC_WSTR>(kEpApi), pSd);
   if (s != RPC_S_OK && s != RPC_S_DUPLICATE_ENDPOINT) {
     Log(L"RpcServerUseProtseqEpW(Api)", 0, static_cast<DWORD>(s));
   }
 
+  if (pSd) {
+    LocalFree(pSd);
+  }
+
   // Регистрируем интерфейс остановки (зад.2 п.5).
-  s = RpcServerRegisterIf2(Praktika_Stop_v1_0_s_ifspec, nullptr, nullptr,
-                           RPC_IF_ALLOW_LOCAL_ONLY,
-                           RPC_C_LISTEN_MAX_CALLS_DEFAULT, (unsigned)-1,
-                           nullptr);
+  s = RpcServerRegisterIf(Praktika_Stop_v1_0_s_ifspec, nullptr, nullptr);
   if (s != RPC_S_OK) {
-    s = RpcServerRegisterIf(Praktika_Stop_v1_0_s_ifspec, nullptr, nullptr);
-    if (s != RPC_S_OK) {
-      return 2;
-    }
+    return 2;
   }
 
   // Регистрируем интерфейс аутентификации/лицензирования (зад.3 п.10).
-  s = RpcServerRegisterIf2(Praktika_Api_v1_0_s_ifspec, nullptr, nullptr,
-                           RPC_IF_ALLOW_LOCAL_ONLY,
-                           RPC_C_LISTEN_MAX_CALLS_DEFAULT, (unsigned)-1,
-                           nullptr);
+  s = RpcServerRegisterIf(Praktika_Api_v1_0_s_ifspec, nullptr, nullptr);
   if (s != RPC_S_OK) {
-    s = RpcServerRegisterIf(Praktika_Api_v1_0_s_ifspec, nullptr, nullptr);
-    if (s != RPC_S_OK) {
-      Log(L"RpcServerRegisterIf(Api)", 0, static_cast<DWORD>(s));
-      return 3;
-    }
+    Log(L"RpcServerRegisterIf(Api)", 0, static_cast<DWORD>(s));
+    return 3;
   }
 
   (void)RpcServerListen(1, RPC_C_LISTEN_MAX_CALLS_DEFAULT, FALSE);
@@ -480,7 +475,7 @@ DWORD WINAPI HandlerEx(DWORD ctrl, DWORD evType, LPVOID evData, LPVOID) {
   case SERVICE_CONTROL_INTERROGATE:
     return NO_ERROR;
   case SERVICE_CONTROL_SESSIONCHANGE:
-    if (evType == WTS_SESSION_LOGON && evData) {
+    if ((evType == WTS_SESSION_LOGON || evType == WTS_SESSION_RECONNECT || evType == WTS_CONSOLE_CONNECT) && evData) {
       const auto* n =
           static_cast<const WTSSESSION_NOTIFICATION*>(evData);
       if (n->cbSize >= sizeof(WTSSESSION_NOTIFICATION) &&
