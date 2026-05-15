@@ -47,6 +47,7 @@ add_executable(PraktikaService
   src/service/http_client.cpp
   src/service/json_parser.cpp
   src/service/av_database.cpp
+  src/service/av_storage.cpp
   src/service/scan_engine.cpp
   rpc/Praktika_Stop_s.c
   rpc/Praktika_Api_s.c

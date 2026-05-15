@@ -62,4 +62,7 @@ std::mutex& GetMutex();
 // Получить дерево (для отладки/статистики).
 const AvTree& GetTree();
 
+// Заменить дерево (используется при загрузке с диска).
+void SetTree(const AvTree& tree);
+
 }  // namespace av

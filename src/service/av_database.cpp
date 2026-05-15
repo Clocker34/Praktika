@@ -178,4 +178,19 @@ bool IsLoaded() {
 std::mutex& GetMutex() { return g_mu; }
 const AvTree& GetTree() { return g_tree; }
 
+void SetTree(const AvTree& tree) {
+  // Вызывающий должен держать мьютекс!
+  g_tree = tree;
+  uint32_t total = 0;
+  for (const auto& [k, v] : g_tree) total += (uint32_t)v.size();
+  wchar_t dateBuf[32]{};
+  SYSTEMTIME st;
+  GetLocalTime(&st);
+  _snwprintf_s(dateBuf, _TRUNCATE, L"%04d-%02d-%02d %02d:%02d",
+               st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute);
+  g_info.releaseDate = dateBuf;
+  g_info.recordCount = total;
+  g_info.loaded = true;
+}
+
 }  // namespace av

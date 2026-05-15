@@ -106,6 +106,8 @@ HWND g_hLoginBtn = nullptr;
 HWND g_hAuthErr = nullptr;
 
 HWND g_hActTitle = nullptr;
+HWND g_hActUserLbl = nullptr;
+HWND g_hActStatusLbl = nullptr;
 HWND g_hCodeLbl = nullptr;
 HWND g_hCodeEdit = nullptr;
 HWND g_hActBtn = nullptr;
@@ -222,10 +224,16 @@ void UpdateUI(HWND hwnd) {
 
   bool isAct = (g_state == GuiState::Activation);
   ShowWindow(g_hActTitle, isAct ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hActUserLbl, isAct ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_hActStatusLbl, isAct ? SW_SHOW : SW_HIDE);
   ShowWindow(g_hCodeLbl, isAct ? SW_SHOW : SW_HIDE);
   ShowWindow(g_hCodeEdit, isAct ? SW_SHOW : SW_HIDE);
   ShowWindow(g_hActBtn, isAct ? SW_SHOW : SW_HIDE);
   ShowWindow(g_hActErr, isAct ? SW_SHOW : SW_HIDE);
+  if (isAct) {
+    SetWindowTextW(g_hActUserLbl, (std::wstring(L"\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C: ") + g_currentUser).c_str());
+    SetWindowTextW(g_hActStatusLbl, L"\u0410\u043D\u0442\u0438\u0432\u0438\u0440\u0443\u0441: \u0417\u0410\u0411\u041B\u041E\u041A\u0418\u0420\u041E\u0412\u0410\u041D");
+  }
 
   bool isMain = (g_state == GuiState::Main);
   ShowWindow(g_hMainTitle, isMain ? SW_SHOW : SW_HIDE);
@@ -477,10 +485,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     
     // --- Activation Controls ---
     g_hActTitle = CreateWindowExW(0, L"STATIC", L"◉  Активация продукта", WS_CHILD | WS_VISIBLE, 30, 25, 350, 28, hwnd, nullptr, hInst, nullptr);
-    g_hCodeLbl = CreateWindowExW(0, L"STATIC", L"Код лицензии", WS_CHILD | WS_VISIBLE, 30, 75, 200, 20, hwnd, nullptr, hInst, nullptr);
-    g_hCodeEdit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, 30, 98, 340, 28, hwnd, (HMENU)ID_CODE_EDIT, hInst, nullptr);
-    g_hActBtn = CreateWindowExW(0, L"BUTTON", L"Активировать", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 30, 145, 340, 38, hwnd, (HMENU)ID_ACTIVATE_BTN, hInst, nullptr);
-    g_hActErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 195, 340, 22, hwnd, nullptr, hInst, nullptr);
+    g_hActUserLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 60, 340, 20, hwnd, nullptr, hInst, nullptr);
+    g_hActStatusLbl = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 85, 340, 22, hwnd, nullptr, hInst, nullptr);
+    g_hCodeLbl = CreateWindowExW(0, L"STATIC", L"Код лицензии", WS_CHILD | WS_VISIBLE, 30, 120, 200, 20, hwnd, nullptr, hInst, nullptr);
+    g_hCodeEdit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, 30, 143, 340, 28, hwnd, (HMENU)ID_CODE_EDIT, hInst, nullptr);
+    g_hActBtn = CreateWindowExW(0, L"BUTTON", L"Активировать", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 30, 185, 340, 38, hwnd, (HMENU)ID_ACTIVATE_BTN, hInst, nullptr);
+    g_hActErr = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 30, 235, 340, 22, hwnd, nullptr, hInst, nullptr);
     
     // --- Main Controls ---
     g_hMainTitle = CreateWindowExW(0, L"STATIC", L"◉  Praktika Antivirus", WS_CHILD | WS_VISIBLE, 30, 25, 350, 28, hwnd, nullptr, hInst, nullptr);
@@ -500,7 +510,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     SendMessageW(g_hActTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
     SendMessageW(g_hMainTitle, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
     HWND allCtrls[] = { g_hUserLbl, g_hUserEdit, g_hPassLbl, g_hPassEdit,
-      g_hLoginBtn, g_hAuthErr, g_hCodeLbl, g_hCodeEdit, g_hActBtn, g_hActErr,
+      g_hLoginBtn, g_hAuthErr, g_hActUserLbl, g_hActStatusLbl, g_hCodeLbl, g_hCodeEdit, g_hActBtn, g_hActErr,
       g_hStatusLbl, g_hMainUserLbl, g_hLicLbl, g_hLogoutBtn,
       g_hAvDbLbl, g_hScanFilBtn, g_hScanDirBtn };
     for (HWND h : allCtrls)
@@ -547,7 +557,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (id == IDM_TRAY_OPEN) {
       ShowAndActivateMainWindow(hwnd);
     } else if (id == IDM_TRAY_EXIT || id == IDM_FILE_EXIT) {
-      Praktika_CallRequestStop();
+      DestroyWindow(hwnd);
     } else if (id == ID_LOGIN_BTN) {
       OnLoginClick(hwnd);
     } else if (id == ID_ACTIVATE_BTN) {
@@ -574,7 +584,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       SetTextColor(hdc, CLR_RED);
     }
     // Status label — green if licensed, red otherwise
-    else if (ctrl == g_hStatusLbl) {
+    else if (ctrl == g_hStatusLbl || ctrl == g_hActStatusLbl) {
       SetTextColor(hdc, g_isLicensed ? CLR_GREEN : CLR_RED);
     }
     // Dim labels
@@ -701,6 +711,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE,
     }
     return 1;
   }
+
+  // Создание меню "Файл" -> "Выход"
+  HMENU hMenu = CreateMenu();
+  HMENU hFileMenu = CreatePopupMenu();
+  AppendMenuW(hFileMenu, MF_STRING, IDM_FILE_EXIT, L"Выход");
+  AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"Файл");
+  SetMenu(main, hMenu);
 
   // Зад.2 п.1 службы: GUI стартует со скрытым окном
   // (служба передаёт /background --silent).
