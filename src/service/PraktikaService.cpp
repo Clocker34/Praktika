@@ -14,6 +14,7 @@
 #include "auth_manager.h"
 #include "license_manager.h"
 #include "av_database.h"
+#include "av_storage.h"
 #include "scan_engine.h"
 
 extern "C" {
@@ -475,7 +476,7 @@ DWORD WINAPI HandlerEx(DWORD ctrl, DWORD evType, LPVOID evData, LPVOID) {
   case SERVICE_CONTROL_INTERROGATE:
     return NO_ERROR;
   case SERVICE_CONTROL_SESSIONCHANGE:
-    if ((evType == WTS_SESSION_LOGON || evType == WTS_SESSION_RECONNECT || evType == WTS_CONSOLE_CONNECT) && evData) {
+    if ((evType == WTS_SESSION_LOGON || evType == 0x3 /*WTS_SESSION_RECONNECT*/ || evType == 0x1 /*WTS_CONSOLE_CONNECT*/) && evData) {
       const auto* n =
           static_cast<const WTSSESSION_NOTIFICATION*>(evData);
       if (n->cbSize >= sizeof(WTSSESSION_NOTIFICATION) &&
@@ -520,6 +521,10 @@ void WINAPI ServiceMain(DWORD, LPWSTR*) {
   // Зад.3: запускаем менеджеры аутентификации и лицензирования.
   auth::Init();
   license::Init();
+
+  // Зад.2.5: загрузка АВ-баз с диска при старте (п.3).
+  // Если файлов нет, создаст базу по умолчанию (п.2, п.6).
+  av::LoadDatabaseFromDisk();
 
   LaunchInAllSessions();
 
@@ -610,7 +615,7 @@ extern "C" long ActivateProduct(handle_t, const wchar_t* activationCode) {
   long result = license::Activate(activationCode);
   // п.1: после успешной активации загружаем АВ-базы.
   if (result == CYCL_OK && !av::IsLoaded()) {
-    av::LoadDatabase();
+    av::LoadDatabaseFromDisk(); // п.3-6: загрузка с диска с каскадным fallback
   }
   return result;
 }
